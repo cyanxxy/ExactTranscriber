@@ -2,6 +2,8 @@ import os
 import google.generativeai as genai
 from jinja2 import Template
 import streamlit as st
+import json
+import re
 
 def initialize_gemini():
     """Initialize Gemini client with API key"""
@@ -61,3 +63,52 @@ def validate_audio_file(file):
         return False
 
     return True
+
+def format_transcript_for_export(transcript_text, format='txt'):
+    """Format transcript for export in different formats"""
+    if format == 'txt':
+        return transcript_text
+
+    elif format == 'json':
+        lines = transcript_text.split('\n')
+        transcript_data = []
+
+        for line in lines:
+            if not line.strip() or line.strip() == '[END]':
+                continue
+
+            # Parse timestamp and content
+            timestamp_match = re.match(r'\[([\d:]+)\]\s*(.*)', line)
+            if timestamp_match:
+                timestamp = timestamp_match.group(1)
+                content = timestamp_match.group(2)
+
+                # Check if it's a special event (like music or sound effect)
+                if content.startswith('[') and content.endswith(']'):
+                    entry = {
+                        "timestamp": timestamp,
+                        "type": "event",
+                        "content": content.strip('[]')
+                    }
+                else:
+                    # Parse speaker and text
+                    speaker_match = re.match(r'([^:]+):\s*(.*)', content)
+                    if speaker_match:
+                        entry = {
+                            "timestamp": timestamp,
+                            "type": "speech",
+                            "speaker": speaker_match.group(1).strip(),
+                            "content": speaker_match.group(2).strip()
+                        }
+                    else:
+                        entry = {
+                            "timestamp": timestamp,
+                            "type": "other",
+                            "content": content.strip()
+                        }
+
+                transcript_data.append(entry)
+
+        return json.dumps({"transcript": transcript_data}, indent=2)
+
+    return transcript_text  # Default to plain text for unknown formats

@@ -1,7 +1,8 @@
 import streamlit as st
 import tempfile
 import os
-from utils import initialize_gemini, get_transcription_prompt, validate_audio_file
+import json
+from utils import initialize_gemini, get_transcription_prompt, validate_audio_file, format_transcript_for_export
 from styles import apply_custom_styles, format_transcript_line
 
 def main():
@@ -79,6 +80,9 @@ def main():
                     # Display results
                     st.success("Transcription completed!")
 
+                    # Store transcript in session state for export
+                    st.session_state.transcript_text = response.text
+
                     # Display formatted transcript
                     st.markdown("### Transcript")
                     with st.container():
@@ -88,6 +92,30 @@ def main():
                                 formatted_line = format_transcript_line(line)
                                 st.markdown(formatted_line, unsafe_allow_html=True)
                         st.markdown('</div>', unsafe_allow_html=True)
+
+                    # Export options
+                    st.markdown("### Export Options")
+                    col1, col2 = st.columns(2)
+
+                    # Plain text export
+                    with col1:
+                        txt_content = format_transcript_for_export(st.session_state.transcript_text, format='txt')
+                        st.download_button(
+                            label="📄 Download as TXT",
+                            data=txt_content,
+                            file_name="transcript.txt",
+                            mime="text/plain"
+                        )
+
+                    # JSON export
+                    with col2:
+                        json_content = format_transcript_for_export(st.session_state.transcript_text, format='json')
+                        st.download_button(
+                            label="🔧 Download as JSON",
+                            data=json_content,
+                            file_name="transcript.json",
+                            mime="application/json"
+                        )
 
                 except Exception as e:
                     st.error(f"An error occurred during transcription: {str(e)}")

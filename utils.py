@@ -9,7 +9,7 @@ def initialize_gemini():
     if not api_key:
         st.error("Gemini API key not found. Please set the GEMINI_API_KEY environment variable.")
         st.stop()
-    return genai.GenerativeModel("gemini-pro")
+    return genai.GenerativeModel("gemini-2.0-flash-001")
 
 def get_transcription_prompt():
     """Return the Jinja2 template for transcription prompt"""

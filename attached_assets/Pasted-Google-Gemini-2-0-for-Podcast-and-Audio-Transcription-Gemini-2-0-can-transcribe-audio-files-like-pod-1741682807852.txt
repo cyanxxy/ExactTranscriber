@@ -1,0 +1,75 @@
+Google Gemini 2.0 for Podcast and Audio Transcription
+Gemini 2.0 can transcribe audio files like podcasts or call recordings. The model generates detailed transcripts with precise timestamps to the second [00:00] and automatically identifies different speakers. It can detect and label special audio events such as background music (even identifying specific songs), sound effects like bells ringing, and named jingles.
+
+You can learn more about working with Gemini here:
+
+https://ai.google.dev/gemini-api/docs/audio?lang=python
+%pip install google-genai jinja2
+import os
+from google import genai
+
+# create client
+api_key = os.getenv("GEMINI_API_KEY","xxx")
+client = genai.Client(api_key=api_key)
+from jinja2 import Template
+
+
+# path to the file to upload
+file_path = "../assets/porsche.mp3" # Repalce with your own file path
+
+# Upload the file to the File API
+file = client.files.upload(file=file_path)
+
+# Generate a structured response using the Gemini API
+prompt_template = Template("""Generate a transcript of the episode. Include timestamps and identify speakers.
+
+Speakers are: 
+{% for speaker in speakers %}- {{ speaker }}{% if not loop.last %}\n{% endif %}{% endfor %}
+
+eg:
+[00:00] Brady: Hello there.
+[00:02] Tim: Hi Brady.
+
+It is important to include the correct speaker names. Use the names you identified earlier. If you really don't know the speaker's name, identify them with a letter of the alphabet, eg there may be an unknown speaker 'A' and another unknown speaker 'B'.
+
+If there is music or a short jingle playing, signify like so:
+[01:02] [MUSIC] or [01:02] [JINGLE]
+
+If you can identify the name of the music or jingle playing then use that instead, eg:
+[01:02] [Firework by Katy Perry] or [01:02] [The Sofa Shop jingle]
+
+If there is some other sound playing try to identify the sound, eg:
+[01:02] [Bell ringing]
+
+Each individual caption should be quite short, a few short sentences at most.
+
+Signify the end of the episode with [END].
+
+Don't use any markdown formatting, like bolding or italics.
+
+Only use characters from the English alphabet, unless you genuinely believe foreign characters are correct.
+
+It is important that you use the correct words and spell everything correctly. Use the context of the podcast to help.
+If the hosts discuss something like a movie, book or celebrity, make sure the movie, book, or celebrity name is spelled correctly.""")
+
+# Define the speakers and render the prompt
+speakers = ["John"]
+prompt = prompt_template.render(speakers=speakers)
+
+response = client.models.generate_content(
+    model="gemini-2.0-flash",
+    contents=[prompt, file],
+)
+
+print(response.text)
+[00:00] John: If the Porsche Macan has proven anything, it's that the days of sacrificing performance for practicality are gone.
+[00:06] John: Long gone.
+[00:08] John: Engineered to deliver a driving experience like no other, the Macan has demonstrated excellence in style and performance to become the leading sports car in its class.
+[00:17] John: So don't let those five doors fool you.
+[00:20] John: Once you're in the driver's seat, one thing will become immediately clear.
+[00:25] [Sound of Porsche Engine Reving]
+[00:27] John: This is a Porsche.
+[00:30] John: The Macan, now leasing from 3.99%.
+[00:35] John: Conditions apply.
+[00:38] [Low Frequency Sound]
+[END]

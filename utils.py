@@ -12,6 +12,7 @@ def initialize_gemini():
     if not api_key:
         st.error("Gemini API key not found. Please set the GEMINI_API_KEY environment variable.")
         st.stop()
+    genai.configure(api_key=api_key)
     return genai.GenerativeModel("gemini-2.0-flash-001")
 
 def get_transcription_prompt(metadata=None):

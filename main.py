@@ -95,7 +95,7 @@ def main():
                         tmp_file.write(uploaded_file.getvalue())
                         file_path = tmp_file.name
 
-                    # Upload to Gemini
+                    # Read audio file as bytes
                     with open(file_path, 'rb') as f:
                         audio_data = f.read()
 
@@ -116,17 +116,15 @@ def main():
                         metadata=metadata
                     )
 
-                    # Get transcription
+                    # Get transcription using the updated API format
                     response = model.generate_content(
-                        contents=[{
-                            "parts": [
-                                {"text": prompt},
-                                {"inline_data": {
-                                    "mime_type": uploaded_file.type,
-                                    "data": audio_data
-                                }}
-                            ]
-                        }]
+                        [
+                            prompt,
+                            {
+                                "mime_type": uploaded_file.type,
+                                "data": audio_data
+                            }
+                        ]
                     )
 
                     # Display results

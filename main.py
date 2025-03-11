@@ -148,21 +148,47 @@ def main():
                                 st.markdown(formatted_line, unsafe_allow_html=True)
                         st.markdown('</div>', unsafe_allow_html=True)
 
-                    # Add editor
-                    st.markdown("### Edit Transcript")
+                    # Enhanced editor section
+                    st.markdown('<div class="editor-container">', unsafe_allow_html=True)
+                    st.markdown('<div class="editor-header">', unsafe_allow_html=True)
+                    st.markdown("### ✏️ Edit Transcript", unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+                    # Instructions with better formatting
+                    st.markdown('<div class="editor-instructions">', unsafe_allow_html=True)
                     st.markdown("""
-                    Edit the transcript below to fix any issues. The edited version will be used for export.
-                    - Keep the timestamp format: [MM:SS]
-                    - Maintain speaker labels with colons: Speaker: Text
-                    - Preserve special event format: [MUSIC], [SOUND], etc.
-                    """)
-                    edited_text = st.text_area(
-                        "Edit transcript",
-                        value=st.session_state.edited_transcript,
-                        height=300,
-                        key="transcript_editor"
-                    )
-                    st.session_state.edited_transcript = edited_text
+                    Edit your transcript below. Keep in mind:
+                    <div class="instruction-item">Timestamps should be in [MM:SS] format</div>
+                    <div class="instruction-item">Speaker labels need a colon: Speaker: Text</div>
+                    <div class="instruction-item">Special events use brackets: [MUSIC], [SOUND]</div>
+                    <div class="instruction-item">Each line should start with a timestamp</div>
+                    """, unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+                    # Editor with preview
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        st.markdown("#### Edit")
+                        edited_text = st.text_area(
+                            "Edit transcript",
+                            value=st.session_state.edited_transcript,
+                            height=400,
+                            key="transcript_editor",
+                            help="Edit your transcript here. Changes will be reflected in the preview."
+                        )
+                        st.session_state.edited_transcript = edited_text
+
+                    with col2:
+                        st.markdown("#### Live Preview")
+                        st.markdown('<div class="preview-container">', unsafe_allow_html=True)
+                        for line in edited_text.split('\n'):
+                            if line.strip():
+                                formatted_line = format_transcript_line(line)
+                                st.markdown(formatted_line, unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+                    st.markdown('</div>', unsafe_allow_html=True)
 
                     # Export options
                     st.markdown("### Export Options")

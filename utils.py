@@ -4,6 +4,7 @@ from jinja2 import Template
 import streamlit as st
 import json
 import re
+from datetime import datetime, timedelta
 
 def initialize_gemini():
     """Initialize Gemini client with API key"""
@@ -64,10 +65,51 @@ def validate_audio_file(file):
 
     return True
 
+def convert_timestamp_to_srt(timestamp):
+    """Convert [MM:SS] format to SRT format (HH:MM:SS,mmm)"""
+    try:
+        minutes, seconds = map(int, timestamp.strip('[]').split(':'))
+        time = timedelta(minutes=minutes, seconds=seconds)
+        return f"{str(time).zfill(8)},000"
+    except:
+        return "00:00:00,000"
+
 def format_transcript_for_export(transcript_text, format='txt'):
     """Format transcript for export in different formats"""
     if format == 'txt':
         return transcript_text
+
+    elif format == 'srt':
+        lines = transcript_text.split('\n')
+        srt_lines = []
+        counter = 1
+
+        for line in lines:
+            if not line.strip() or line.strip() == '[END]':
+                continue
+
+            # Parse timestamp and content
+            timestamp_match = re.match(r'\[([\d:]+)\]\s*(.*)', line)
+            if timestamp_match:
+                timestamp = timestamp_match.group(1)
+                content = timestamp_match.group(2)
+
+                # Convert timestamp to SRT format
+                start_time = convert_timestamp_to_srt(f"[{timestamp}]")
+                # Add 3 seconds for end time
+                minutes, seconds = map(int, timestamp.split(':'))
+                end_time = convert_timestamp_to_srt(f"[{minutes:02d}:{(seconds + 3):02d}]")
+
+                # Format SRT entry
+                srt_lines.extend([
+                    str(counter),
+                    f"{start_time} --> {end_time}",
+                    content.strip(),
+                    ""  # Empty line between entries
+                ])
+                counter += 1
+
+        return "\n".join(srt_lines)
 
     elif format == 'json':
         lines = transcript_text.split('\n')

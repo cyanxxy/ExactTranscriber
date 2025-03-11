@@ -95,7 +95,7 @@ def main():
 
                     # Export options
                     st.markdown("### Export Options")
-                    col1, col2 = st.columns(2)
+                    col1, col2, col3 = st.columns(3)
 
                     # Plain text export
                     with col1:
@@ -115,6 +115,16 @@ def main():
                             data=json_content,
                             file_name="transcript.json",
                             mime="application/json"
+                        )
+
+                    # SRT export
+                    with col3:
+                        srt_content = format_transcript_for_export(st.session_state.transcript_text, format='srt')
+                        st.download_button(
+                            label="🎬 Download as SRT",
+                            data=srt_content,
+                            file_name="transcript.srt",
+                            mime="text/plain"
                         )
 
                 except Exception as e:

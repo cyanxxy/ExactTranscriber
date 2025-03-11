@@ -81,17 +81,36 @@ def main():
                     st.success("Transcription completed!")
 
                     # Store transcript in session state for export
-                    st.session_state.transcript_text = response.text
+                    if 'transcript_text' not in st.session_state:
+                        st.session_state.transcript_text = response.text
+                    if 'edited_transcript' not in st.session_state:
+                        st.session_state.edited_transcript = response.text
 
-                    # Display formatted transcript
-                    st.markdown("### Transcript")
+                    # Display formatted transcript and editor
+                    st.markdown("### Original Transcript")
                     with st.container():
                         st.markdown('<div class="transcript-container">', unsafe_allow_html=True)
-                        for line in response.text.split('\n'):
+                        for line in st.session_state.transcript_text.split('\n'):
                             if line.strip():
                                 formatted_line = format_transcript_line(line)
                                 st.markdown(formatted_line, unsafe_allow_html=True)
                         st.markdown('</div>', unsafe_allow_html=True)
+
+                    # Add editor
+                    st.markdown("### Edit Transcript")
+                    st.markdown("""
+                    Edit the transcript below to fix any issues. The edited version will be used for export.
+                    - Keep the timestamp format: [MM:SS]
+                    - Maintain speaker labels with colons: Speaker: Text
+                    - Preserve special event format: [MUSIC], [SOUND], etc.
+                    """)
+                    edited_text = st.text_area(
+                        "Edit transcript",
+                        value=st.session_state.edited_transcript,
+                        height=300,
+                        key="transcript_editor"
+                    )
+                    st.session_state.edited_transcript = edited_text
 
                     # Export options
                     st.markdown("### Export Options")
@@ -99,7 +118,7 @@ def main():
 
                     # Plain text export
                     with col1:
-                        txt_content = format_transcript_for_export(st.session_state.transcript_text, format='txt')
+                        txt_content = format_transcript_for_export(st.session_state.edited_transcript, format='txt')
                         st.download_button(
                             label="📄 Download as TXT",
                             data=txt_content,
@@ -109,7 +128,7 @@ def main():
 
                     # JSON export
                     with col2:
-                        json_content = format_transcript_for_export(st.session_state.transcript_text, format='json')
+                        json_content = format_transcript_for_export(st.session_state.edited_transcript, format='json')
                         st.download_button(
                             label="🔧 Download as JSON",
                             data=json_content,
@@ -119,7 +138,7 @@ def main():
 
                     # SRT export
                     with col3:
-                        srt_content = format_transcript_for_export(st.session_state.transcript_text, format='srt')
+                        srt_content = format_transcript_for_export(st.session_state.edited_transcript, format='srt')
                         st.download_button(
                             label="🎬 Download as SRT",
                             data=srt_content,

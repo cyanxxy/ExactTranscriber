@@ -32,20 +32,59 @@ def main():
         st.error(f"Failed to initialize Gemini client: {str(e)}")
         st.stop()
 
+    # Optional metadata section
+    with st.expander("📝 Add Optional Context (Improves Transcription Quality)", expanded=False):
+        content_type = st.selectbox(
+            "Content Type",
+            options=["Podcast", "Interview", "Meeting", "Presentation", "Other"],
+            index=0,
+            help="Select the type of content being transcribed"
+        )
+
+        topic = st.text_input(
+            "Main Topic",
+            help="Enter the main topic or subject matter of the audio"
+        )
+
+        description = st.text_area(
+            "Description",
+            help="Add any additional context about the content"
+        )
+
+        language = st.selectbox(
+            "Primary Language",
+            options=["English", "Spanish", "French", "German", "Other"],
+            index=0,
+            help="Select the primary language of the audio"
+        )
+
+        st.markdown("### Speaker Information")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            speakers = st.text_input(
+                "Speaker Names (comma-separated)",
+                value="Speaker A",
+                help="Example: John, Sarah, Michael"
+            ).split(',')
+            speakers = [s.strip() for s in speakers if s.strip()]
+
+        with col2:
+            speaker_roles = st.text_input(
+                "Speaker Roles (comma-separated, optional)",
+                help="Example: Host, Guest, Interviewer"
+            ).split(',')
+            speaker_roles = [r.strip() for r in speaker_roles if r.strip()]
+
+            # Pad speaker_roles if needed
+            speaker_roles.extend([''] * (len(speakers) - len(speaker_roles)))
+
     # File upload
     uploaded_file = st.file_uploader("Upload an audio file", type=['mp3', 'wav', 'ogg'])
 
     if uploaded_file:
         if not validate_audio_file(uploaded_file):
             st.stop()
-
-        # Speaker input
-        speakers = st.text_input(
-            "Enter speaker names (comma-separated)",
-            value="Speaker A",
-            help="Example: John, Sarah, Michael"
-        ).split(',')
-        speakers = [s.strip() for s in speakers if s.strip()]
 
         # Process button
         if st.button("Transcribe Audio"):
@@ -60,9 +99,22 @@ def main():
                     with open(file_path, 'rb') as f:
                         audio_data = f.read()
 
+                    # Prepare metadata
+                    metadata = {
+                        "content_type": content_type.lower() if content_type != "Other" else None,
+                        "topic": topic if topic else None,
+                        "description": description if description else None,
+                        "language": language if language != "Other" else None
+                    }
+                    metadata = {k: v for k, v in metadata.items() if v is not None}
+
                     # Generate transcription prompt
-                    prompt_template = get_transcription_prompt()
-                    prompt = prompt_template.render(speakers=speakers)
+                    prompt_template = get_transcription_prompt(metadata)
+                    prompt = prompt_template.render(
+                        speakers=speakers,
+                        speaker_roles=speaker_roles if any(speaker_roles) else None,
+                        metadata=metadata
+                    )
 
                     # Get transcription
                     response = model.generate_content(

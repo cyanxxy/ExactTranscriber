@@ -14,12 +14,25 @@ def initialize_gemini():
         st.stop()
     return genai.GenerativeModel("gemini-2.0-flash-001")
 
-def get_transcription_prompt():
+def get_transcription_prompt(metadata=None):
     """Return the Jinja2 template for transcription prompt"""
-    return Template("""Generate a transcript of the episode. Include timestamps and identify speakers.
+    return Template("""Generate a transcript of the {{ content_type|default('episode', true) }}. Include timestamps and identify speakers.
+
+{% if metadata and metadata.description %}
+Context about the content:
+{{ metadata.description }}
+{% endif %}
 
 Speakers are: 
-{% for speaker in speakers %}- {{ speaker }}{% if not loop.last %}\n{% endif %}{% endfor %}
+{% for speaker in speakers %}- {{ speaker }}{% if speaker_roles and speaker_roles[loop.index0] %} ({{ speaker_roles[loop.index0] }}){% endif %}{% if not loop.last %}\n{% endif %}{% endfor %}
+
+{% if metadata and metadata.topic %}
+The main topic is: {{ metadata.topic }}
+{% endif %}
+
+{% if metadata and metadata.language %}
+Primary language: {{ metadata.language }}
+{% endif %}
 
 eg:
 [00:00] Brady: Hello there.
@@ -44,8 +57,7 @@ Don't use any markdown formatting, like bolding or italics.
 
 Only use characters from the English alphabet, unless you genuinely believe foreign characters are correct.
 
-It is important that you use the correct words and spell everything correctly. Use the context of the podcast to help.
-If the hosts discuss something like a movie, book or celebrity, make sure the movie, book, or celebrity name is spelled correctly.""")
+It is important that you use the correct words and spell everything correctly. Use the context to help.""")
 
 def validate_audio_file(file):
     """Validate uploaded audio file"""

@@ -2,7 +2,16 @@ import streamlit as st
 import tempfile
 import os
 import json
-from utils import initialize_gemini, get_transcription_prompt, validate_audio_file, format_transcript_for_export
+import re
+from utils import (
+    initialize_gemini, 
+    get_transcription_prompt, 
+    validate_audio_file, 
+    format_transcript_for_export,
+    chunk_audio_file,
+    adjust_chunk_timestamps,
+    combine_transcriptions
+)
 from styles import apply_custom_styles, format_transcript_line
 
 def main():
@@ -116,25 +125,111 @@ def main():
                         metadata=metadata
                     )
 
-                    # Get transcription using the updated API format
-                    response = model.generate_content(
-                        [
-                            prompt,
-                            {
-                                "mime_type": uploaded_file.type,
-                                "data": audio_data
-                            }
-                        ]
-                    )
+                    # Determine file format for chunking
+                    file_format = uploaded_file.type.split('/')[-1]
+                    if file_format == 'mpeg':
+                        file_format = 'mp3'
+                    elif file_format == 'x-wav':
+                        file_format = 'wav'
 
-                    # Display results
-                    st.success("Transcription completed!")
-
-                    # Store transcript in session state for export
-                    if 'transcript_text' not in st.session_state:
-                        st.session_state.transcript_text = response.text
-                    if 'edited_transcript' not in st.session_state:
-                        st.session_state.edited_transcript = response.text
+                    # Check file size to determine if chunking is needed
+                    file_size_mb = uploaded_file.size / (1024 * 1024)
+                    large_file = file_size_mb > 20  # 20MB threshold
+                    
+                    if large_file:
+                        # Create a status container for showing progress
+                        status_container = st.empty()
+                        status_container.info("Processing large audio file (up to 4 hours). This may take some time...")
+                        
+                        # Create a progress bar
+                        progress_bar = st.progress(0)
+                        
+                        # Split audio into chunks (default 10 minute chunks)
+                        status_container.info("Splitting audio into manageable chunks...")
+                        chunk_paths, num_chunks = chunk_audio_file(audio_data, file_format)
+                        
+                        if num_chunks == 0 or not chunk_paths:
+                            st.error("Failed to split audio file. Please try a different file.")
+                            st.stop()
+                        
+                        # Process each chunk and collect transcriptions
+                        all_transcriptions = []
+                        
+                        for i, chunk_path in enumerate(chunk_paths):
+                            # Update progress
+                            progress = int((i / num_chunks) * 100)
+                            progress_bar.progress(progress)
+                            status_container.info(f"Transcribing chunk {i+1} of {num_chunks}...")
+                            
+                            # Read chunk data
+                            with open(chunk_path, 'rb') as f:
+                                chunk_data = f.read()
+                            
+                            # Process chunk with Gemini API
+                            chunk_response = model.generate_content(
+                                [
+                                    prompt,
+                                    {
+                                        "mime_type": uploaded_file.type,
+                                        "data": chunk_data
+                                    }
+                                ]
+                            )
+                            
+                            # Adjust timestamps based on chunk position
+                            adjusted_transcription = adjust_chunk_timestamps(chunk_response.text, i)
+                            all_transcriptions.append(adjusted_transcription)
+                        
+                        # Combine all transcriptions
+                        status_container.info("Combining all transcriptions...")
+                        combined_transcription = combine_transcriptions(all_transcriptions)
+                        
+                        # Clean up temporary chunk files
+                        status_container.info("Cleaning up temporary files...")
+                        for chunk_path in chunk_paths:
+                            try:
+                                os.unlink(chunk_path)
+                            except:
+                                pass
+                        
+                        # Try to clean up the temporary directory
+                        try:
+                            temp_dir = os.path.dirname(chunk_paths[0]) if chunk_paths else None
+                            if temp_dir and os.path.exists(temp_dir):
+                                os.rmdir(temp_dir)
+                        except:
+                            pass
+                        
+                        # Update progress to 100%
+                        progress_bar.progress(100)
+                        status_container.success("Transcription completed!")
+                        
+                        # Store transcript in session state
+                        if 'transcript_text' not in st.session_state:
+                            st.session_state.transcript_text = combined_transcription
+                        if 'edited_transcript' not in st.session_state:
+                            st.session_state.edited_transcript = combined_transcription
+                    
+                    else:
+                        # Process small audio file directly
+                        response = model.generate_content(
+                            [
+                                prompt,
+                                {
+                                    "mime_type": uploaded_file.type,
+                                    "data": audio_data
+                                }
+                            ]
+                        )
+                        
+                        # Display results
+                        st.success("Transcription completed!")
+                        
+                        # Store transcript in session state for export
+                        if 'transcript_text' not in st.session_state:
+                            st.session_state.transcript_text = response.text
+                        if 'edited_transcript' not in st.session_state:
+                            st.session_state.edited_transcript = response.text
 
                     # Display formatted transcript and editor
                     st.markdown("### Original Transcript")
@@ -202,7 +297,8 @@ def main():
                 finally:
                     # Cleanup temporary file
                     try:
-                        os.unlink(file_path)
+                        if 'file_path' in locals():
+                            os.unlink(file_path)
                     except:
                         pass
 

@@ -4,7 +4,10 @@ from jinja2 import Template
 import streamlit as st
 import json
 import re
+import tempfile
 from datetime import datetime, timedelta
+from pydub import AudioSegment
+import io
 
 def initialize_gemini():
     """Initialize Gemini client with API key"""
@@ -72,8 +75,9 @@ def validate_audio_file(file):
         st.error("Please upload a valid audio file (MP3, WAV, or OGG format)")
         return False
 
-    if file.size > 20 * 1024 * 1024:  # 20MB limit
-        st.error("File size too large. Please upload an audio file smaller than 20MB")
+    # Increased file size limit to support longer audio files
+    if file.size > 500 * 1024 * 1024:  # 500MB limit
+        st.error("File size too large. Please upload an audio file smaller than 500MB")
         return False
 
     return True
@@ -167,3 +171,128 @@ def format_transcript_for_export(transcript_text, format='txt'):
         return json.dumps({"transcript": transcript_data}, indent=2)
 
     return transcript_text  # Default to plain text for unknown formats
+
+def chunk_audio_file(audio_data, file_format, chunk_duration_ms=600000):
+    """
+    Split an audio file into chunks of specified duration
+    
+    Args:
+        audio_data: Binary audio data
+        file_format: Format of the audio file (e.g., 'mp3', 'wav')
+        chunk_duration_ms: Duration of each chunk in milliseconds (default: 10 minutes)
+        
+    Returns:
+        List of file paths to the temporary chunk files and number of chunks
+    """
+    try:
+        # Load audio from binary data
+        audio = AudioSegment.from_file(io.BytesIO(audio_data), format=file_format)
+        
+        # Get the total length of the audio in milliseconds
+        total_duration = len(audio)
+        
+        # Calculate number of chunks
+        num_chunks = (total_duration // chunk_duration_ms) + (1 if total_duration % chunk_duration_ms > 0 else 0)
+        
+        # Create list to store chunk file paths
+        chunk_paths = []
+        
+        # Create temporary directory to store chunks
+        # We're not using the 'with' context here as we need the directory to persist until processing is done
+        temp_dir = tempfile.mkdtemp()
+        
+        # Split audio into chunks
+        for i in range(num_chunks):
+            start_time = i * chunk_duration_ms
+            end_time = min((i + 1) * chunk_duration_ms, total_duration)
+            
+            # Extract chunk
+            chunk = audio[start_time:end_time]
+            
+            # Create temporary file for chunk
+            chunk_path = os.path.join(temp_dir, f"chunk_{i}.{file_format}")
+            chunk.export(chunk_path, format=file_format)
+            
+            # Add to list of chunk file paths
+            chunk_paths.append(chunk_path)
+        
+        return chunk_paths, num_chunks
+    
+    except Exception as e:
+        st.error(f"Error splitting audio file: {str(e)}")
+        return [], 0
+
+def adjust_chunk_timestamps(transcription, chunk_index, chunk_duration_ms=600000):
+    """
+    Adjust timestamps in a transcription chunk to account for its position in the full audio
+    
+    Args:
+        transcription: Transcription text
+        chunk_index: Index of the chunk (0-based)
+        chunk_duration_ms: Duration of each chunk in milliseconds
+        
+    Returns:
+        Transcription with adjusted timestamps
+    """
+    # Calculate base time offset in minutes and seconds
+    base_minutes = (chunk_index * chunk_duration_ms) // 60000
+    
+    # Split transcription into lines
+    lines = transcription.split('\n')
+    adjusted_lines = []
+    
+    for line in lines:
+        # Skip empty lines and [END] marker
+        if not line.strip() or line.strip() == '[END]':
+            continue
+            
+        # Find timestamp pattern [MM:SS]
+        timestamp_match = re.match(r'\[([\d:]+)\](.*)', line)
+        if timestamp_match:
+            # Extract timestamp and content
+            timestamp = timestamp_match.group(1)
+            content = timestamp_match.group(2)
+            
+            # Parse original minutes and seconds
+            try:
+                minutes, seconds = map(int, timestamp.split(':'))
+                
+                # Adjust minutes based on chunk position
+                adjusted_minutes = minutes + base_minutes
+                
+                # Format new timestamp
+                adjusted_timestamp = f"[{adjusted_minutes:02d}:{seconds:02d}]"
+                
+                # Reconstruct line with adjusted timestamp
+                adjusted_line = f"{adjusted_timestamp}{content}"
+                adjusted_lines.append(adjusted_line)
+            except:
+                # If timestamp format is unexpected, keep original
+                adjusted_lines.append(line)
+        else:
+            # No timestamp found, keep line as is
+            adjusted_lines.append(line)
+    
+    return '\n'.join(adjusted_lines)
+
+def combine_transcriptions(transcription_chunks):
+    """
+    Combine multiple transcription chunks into a single transcription
+    
+    Args:
+        transcription_chunks: List of transcription texts
+        
+    Returns:
+        Combined transcription
+    """
+    combined_lines = []
+    
+    for i, chunk in enumerate(transcription_chunks):
+        # Skip [END] marker in all chunks except the last one
+        lines = chunk.split('\n')
+        if i < len(transcription_chunks) - 1:
+            lines = [line for line in lines if line.strip() != '[END]']
+        
+        combined_lines.extend(lines)
+    
+    return '\n'.join(combined_lines)

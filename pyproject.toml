@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "google-generativeai>=0.8.4",
     "jinja2>=3.1.6",
+    "pydub>=0.25.1",
     "sift-stack-py>=0.4.2",
     "streamlit>=1.43.1",
 ]

@@ -99,10 +99,16 @@ def main():
         if st.button("Transcribe Audio"):
             with st.spinner("Processing your audio file..."):
                 try:
-                    # Save uploaded file temporarily
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=uploaded_file.name) as tmp_file:
+                    # Save uploaded file temporarily with secure permissions
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=uploaded_file.name, mode='wb') as tmp_file:
                         tmp_file.write(uploaded_file.getvalue())
                         file_path = tmp_file.name
+                    
+                    # Set secure permissions for the temporary file (if on Unix-like OS)
+                    try:
+                        os.chmod(file_path, 0o600)  # Read/write for owner only
+                    except:
+                        pass  # Skip if on Windows or permission change fails
 
                     # Read audio file as bytes
                     with open(file_path, 'rb') as f:
@@ -292,7 +298,12 @@ def main():
                         )
 
                 except Exception as e:
-                    st.error(f"An error occurred during transcription: {str(e)}")
+                    # Log the error message in a secure way that doesn't leak sensitive information
+                    error_message = str(e)
+                    # Redact any potential API keys in error message
+                    if 'key' in error_message.lower() and len(error_message) > 10:
+                        error_message = "API authentication error. Please check your API key."
+                    st.error(f"An error occurred during transcription: {error_message}")
 
                 finally:
                     # Cleanup temporary file

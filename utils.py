@@ -15,7 +15,14 @@ def initialize_gemini():
     if not api_key:
         st.error("Gemini API key not found. Please set the GEMINI_API_KEY environment variable.")
         st.stop()
+    
+    # Configure Gemini API with the key
     genai.configure(api_key=api_key)
+    
+    # Log that initialization was successful without exposing the key
+    # st.debug("Gemini API initialized successfully")
+    
+    # Return the model instance
     return genai.GenerativeModel("gemini-2.0-flash-001")
 
 def get_transcription_prompt(metadata=None):
@@ -201,6 +208,12 @@ def chunk_audio_file(audio_data, file_format, chunk_duration_ms=600000):
         # We're not using the 'with' context here as we need the directory to persist until processing is done
         temp_dir = tempfile.mkdtemp()
         
+        # Set secure permissions for the temporary directory (if on Unix-like OS)
+        try:
+            os.chmod(temp_dir, 0o700)  # Read/write/execute for owner only
+        except:
+            pass  # Skip if on Windows or permission change fails
+        
         # Split audio into chunks
         for i in range(num_chunks):
             start_time = i * chunk_duration_ms
@@ -212,6 +225,12 @@ def chunk_audio_file(audio_data, file_format, chunk_duration_ms=600000):
             # Create temporary file for chunk
             chunk_path = os.path.join(temp_dir, f"chunk_{i}.{file_format}")
             chunk.export(chunk_path, format=file_format)
+            
+            # Set secure permissions for the chunk file (if on Unix-like OS)
+            try:
+                os.chmod(chunk_path, 0o600)  # Read/write for owner only
+            except:
+                pass  # Skip if on Windows or permission change fails
             
             # Add to list of chunk file paths
             chunk_paths.append(chunk_path)

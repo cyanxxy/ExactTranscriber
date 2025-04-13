@@ -7,11 +7,3 @@ services:
     pythonVersion: "3.9" # Explicitly set Python version to 3.9 which is well-supported
     buildCommand: "pip install -r requirements.txt --no-cache-dir" # Command to install dependencies
     startCommand: "streamlit run main.py --server.port $PORT --server.address 0.0.0.0" # Command to run the Streamlit app
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.9
-      - key: STREAMLIT_SERVER_PORT
-        fromService:
-          type: web
-          name: exact-transcriber
-          envVarKey: PORT

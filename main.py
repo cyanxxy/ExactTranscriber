@@ -16,6 +16,36 @@ from utils import (
 )
 from styles import apply_custom_styles, format_transcript_line
 
+# --- Simple Password Authentication ---
+def check_password():
+    """Returns `True` if the user had the correct password."""
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        # Use st.secrets for password retrieval
+        if "app_password" in st.secrets and st.session_state["password"] == st.secrets["app_password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store password in session state.
+        else:
+            st.session_state["password_correct"] = False
+
+    # Initialize password_correct in session state if it doesn't exist
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False # Default to False
+
+    # Only show input if password is not correct.
+    if not st.session_state["password_correct"]:
+        st.text_input(
+            "Password", type="password", on_change=password_entered, key="password"
+        )
+        # Display error only if a password attempt has been made and failed
+        if "password" in st.session_state and not st.session_state["password_correct"]:
+             st.error("😕 Password incorrect")
+        return False # Return False to block app execution
+    else:
+        # Password correct.
+        return True
+
 def main():
     # Page configuration must be the first Streamlit command
     st.set_page_config(
@@ -26,6 +56,12 @@ def main():
 
     # Apply custom styles after page config
     apply_custom_styles()
+
+    # --- Check Password ---
+    if not check_password():
+        st.stop() # Stop execution if password check fails
+
+    # --- Rest of your app code starts here ---
 
     # Clean, minimal header with subtle styling
     st.markdown("<h1 style='text-align: center; margin-bottom: 30px; color: #1E88E5;'>Audio Transcription</h1>", unsafe_allow_html=True)

@@ -1,5 +1,5 @@
 import os
-import google.generativeai as genai
+from google import genai
 from jinja2 import Template
 import streamlit as st
 import json
@@ -11,34 +11,55 @@ import io
 
 def initialize_gemini(model_name="gemini-2.0-flash-001"):
     """
-    Initialize Gemini client with API key and specified model name
+    Initializes the Gemini client.
+    Uses API key from Streamlit secrets or environment variables.
     
     Args:
-        model_name: The name of the Gemini model to use. 
-                   Options: "gemini-2.0-flash-001" or "gemini-2.5-pro-preview-03-25"
-    
+        model_name: The name of the Gemini model to use.
+        
     Returns:
-        A GenerativeModel instance with the requested model
+        Tuple (genai.Client, str, str) or (None, str, None) if initialization fails.
+        The first string contains an error message if initialization fails, otherwise None.
+        The second string contains the model name.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = None
+    error_message = None
+
+    # Try getting API key from Streamlit secrets
+    try:
+        if st.secrets and "GEMINI_API_KEY" in st.secrets["secrets"]:
+            api_key = st.secrets["secrets"]["GEMINI_API_KEY"]
+    except Exception as e:
+        pass
+
+    # If not found in secrets, try environment variable
     if not api_key:
-        st.error("Gemini API key not found. Please set the GEMINI_API_KEY environment variable.")
-        st.stop()
-    
-    # Configure Gemini API with the key
-    genai.configure(api_key=api_key)
-    
-    # Validate model name
-    valid_models = ["gemini-2.0-flash-001", "gemini-2.5-pro-preview-03-25"]
-    if model_name not in valid_models:
-        st.warning(f"Invalid model name: {model_name}. Using default model gemini-2.0-flash-001.")
-        model_name = "gemini-2.0-flash-001"
-    
-    # Log that initialization was successful without exposing the key
-    # st.debug(f"Gemini API initialized successfully with model {model_name}")
-    
-    # Return the model instance
-    return genai.GenerativeModel(model_name)
+        api_key = os.environ.get("GEMINI_API_KEY")
+
+    # If API key is still not found
+    if not api_key:
+        error_message = f"API key not found. Set GEMINI_API_KEY in secrets or env."
+        return None, error_message, None
+
+    try:
+        # Create the client with the API key
+        client = genai.Client(api_key=api_key)
+        
+        # Validate model name against common models
+        valid_models = ["gemini-2.0-flash-001", "gemini-2.5-pro-preview-03-25", "gemini-1.5-flash-latest", "gemini-1.0-pro"]
+        if model_name not in valid_models:
+            st.warning(f"Model name '{model_name}' may not be valid. Using 'gemini-2.0-flash-001'.")
+            model_name = "gemini-2.0-flash-001"
+        
+        # Return client and model name (no error)
+        return client, None, model_name
+        
+    except Exception as e:
+        error_message = f"Failed to initialize Gemini client: {str(e)}"
+        # Clean up potentially sensitive info from error
+        if api_key in error_message:
+             error_message = "Failed to initialize Gemini due to an API key or configuration issue."
+        return None, error_message, None
 
 def get_transcription_prompt(metadata=None):
     """Return the Jinja2 template for transcription prompt"""

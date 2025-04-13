@@ -3,29 +3,103 @@ import streamlit as st
 def apply_custom_styles():
     st.markdown("""
         <style>
+        /* Base styles for a minimal clean look */
+        .main .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+        
+        /* Streamlit component styling */
+        div.stButton > button {
+            width: 100%;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+        
+        /* Transcript styling */
         .timestamp {
-            color: #666;
+            color: #888;
             font-family: monospace;
-            font-weight: bold;
+            font-size: 0.9em;
+            font-weight: 500;
+            background-color: rgba(0,0,0,0.05);
+            padding: 2px 4px;
+            border-radius: 3px;
+            margin-right: 6px;
         }
         .speaker {
-            color: #FF4B4B;
-            font-weight: bold;
+            color: #1E88E5;
+            font-weight: 600;
+            margin-right: 4px;
         }
         .special-event {
-            color: #1E88E5;
+            color: #6C757D;
             font-style: italic;
+            background-color: rgba(0,0,0,0.03);
+            padding: 2px 6px;
+            border-radius: 3px;
         }
-        .transcript-container {
-            background-color: #F8F9FA;
-            padding: 20px;
-            border-radius: 10px;
-            margin: 10px 0;
+        
+        /* Transcript container styling */
+        .stMarkdown {
+            line-height: 1.6;
         }
+        
+        /* Add spacing between transcript lines */
+        .stMarkdown p {
+            margin-bottom: 12px;
+        }
+        
+        /* Make alerts less intrusive */
         .stAlert {
-            padding: 10px;
-            border-radius: 5px;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
         }
+        
+        /* Simple, clean tab styling */
+        .stTabs {
+            margin-top: 1rem;
+        }
+        
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 0;
+            border-bottom: 2px solid #e6e9ef;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            padding: 10px 24px;
+            font-weight: 600;
+            font-size: 1rem;
+            border: none;
+            background: transparent;
+            color: #666;
+            margin-right: 8px;
+        }
+        
+        .stTabs [data-baseweb="tab"][aria-selected="true"] {
+            color: #1E88E5;
+            background-color: rgba(30, 136, 229, 0.1);
+            border-bottom: 3px solid #1E88E5;
+            margin-bottom: -2px;
+        }
+        
+        .stTabs [data-baseweb="tab-highlight"] {
+            display: none;
+        }
+        
+        .stTabs [data-baseweb="tab-panel"] {
+            padding: 1rem 0;
+        }
+        
+        /* Expander styling */
+        .streamlit-expanderHeader {
+            font-size: 1rem;
+            font-weight: 500;
+        }
+        
+        /* Footer styling */
+        footer {display: none;}
         </style>
     """, unsafe_allow_html=True)
 

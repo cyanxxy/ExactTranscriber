@@ -27,14 +27,22 @@ def initialize_gemini(model_name="gemini-2.0-flash-001"):
 
     # Try getting API key from Streamlit secrets
     try:
-        if st.secrets and "GEMINI_API_KEY" in st.secrets["secrets"]:
+        # First try GOOGLE_API_KEY (new standard)
+        if st.secrets and "GOOGLE_API_KEY" in st.secrets:
+            api_key = st.secrets["GOOGLE_API_KEY"]
+        # Fall back to GEMINI_API_KEY in secrets (old format)
+        elif st.secrets and "secrets" in st.secrets and "GEMINI_API_KEY" in st.secrets["secrets"]:
             api_key = st.secrets["secrets"]["GEMINI_API_KEY"]
     except Exception as e:
         pass
 
-    # If not found in secrets, try environment variable
+    # If not found in secrets, try environment variables
     if not api_key:
-        api_key = os.environ.get("GEMINI_API_KEY")
+        # Try GOOGLE_API_KEY first (new standard)
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        # Fall back to GEMINI_API_KEY
+        if not api_key:
+            api_key = os.environ.get("GEMINI_API_KEY")
 
     # If API key is still not found
     if not api_key:

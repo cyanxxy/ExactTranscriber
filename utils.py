@@ -9,8 +9,17 @@ from datetime import datetime, timedelta
 from pydub import AudioSegment
 import io
 
-def initialize_gemini():
-    """Initialize Gemini client with API key"""
+def initialize_gemini(model_name="gemini-2.0-flash-001"):
+    """
+    Initialize Gemini client with API key and specified model name
+    
+    Args:
+        model_name: The name of the Gemini model to use. 
+                   Options: "gemini-2.0-flash-001" or "gemini-2.5-pro-preview-03-25"
+    
+    Returns:
+        A GenerativeModel instance with the requested model
+    """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         st.error("Gemini API key not found. Please set the GEMINI_API_KEY environment variable.")
@@ -19,11 +28,17 @@ def initialize_gemini():
     # Configure Gemini API with the key
     genai.configure(api_key=api_key)
     
+    # Validate model name
+    valid_models = ["gemini-2.0-flash-001", "gemini-2.5-pro-preview-03-25"]
+    if model_name not in valid_models:
+        st.warning(f"Invalid model name: {model_name}. Using default model gemini-2.0-flash-001.")
+        model_name = "gemini-2.0-flash-001"
+    
     # Log that initialization was successful without exposing the key
-    # st.debug("Gemini API initialized successfully")
+    # st.debug(f"Gemini API initialized successfully with model {model_name}")
     
     # Return the model instance
-    return genai.GenerativeModel("gemini-2.0-flash-001")
+    return genai.GenerativeModel(model_name)
 
 def get_transcription_prompt(metadata=None):
     """Return the Jinja2 template for transcription prompt"""

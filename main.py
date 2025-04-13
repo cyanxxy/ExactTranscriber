@@ -34,11 +34,45 @@ def main():
     - 🎵 Special audio event detection
     """)
 
-    # Initialize Gemini client
+    # Model selection
+    st.sidebar.markdown("## Model Settings")
+    model_selection = st.sidebar.radio(
+        "Select Gemini Model",
+        options=["gemini-2.0-flash-001", "gemini-2.5-pro-preview-03-25"],
+        index=0,
+        help="Choose which Gemini model to use for transcription. gemini-2.0-flash-001 is optimized for speed, while gemini-2.5-pro-preview-03-25 may provide higher quality."
+    )
+    
+    # Display model information
+    st.sidebar.markdown("### Model Information")
+    if model_selection == "gemini-2.0-flash-001":
+        st.sidebar.info("""
+        **Gemini 2.0 Flash**
+        - Optimized for speed and efficiency
+        - Good for general transcription tasks
+        - Reliable timestamp generation
+        - Great for longer audio files when using chunking
+        """)
+    else:
+        st.sidebar.info("""
+        **Gemini 2.5 Pro Preview**
+        - Latest model version with enhanced capabilities
+        - May provide better accuracy for complex audio
+        - Potentially better speaker identification
+        - Could improve special audio event detection
+        - May be slower than Flash model
+        """)
+    
+    # Initialize Gemini client with selected model
     try:
-        model = initialize_gemini()
+        model = initialize_gemini(model_selection)
+        st.sidebar.success(f"Using {model_selection}")
     except Exception as e:
-        st.error(f"Failed to initialize Gemini client: {str(e)}")
+        error_message = str(e)
+        # Redact any potential API keys in error message
+        if 'key' in error_message.lower() and len(error_message) > 10:
+            error_message = "API authentication error. Please check your API key."
+        st.error(f"Failed to initialize Gemini client: {error_message}")
         st.stop()
 
     # Optional metadata section
@@ -315,7 +349,7 @@ def main():
 
     # Footer
     st.markdown("---")
-    st.markdown("Powered by Google Gemini 2.0 API")
+    st.markdown("Powered by Google Gemini API")
 
 if __name__ == "__main__":
     main()

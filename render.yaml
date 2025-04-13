@@ -4,6 +4,5 @@ services:
     name: exact-transcriber # Choose a name for your service (same as in Render UI)
     env: python # Specifies the runtime environment
     plan: free # Specifies the instance type
-    pythonVersion: "3.9" # Explicitly set Python version to 3.9 which is well-supported
     buildCommand: "pip install -r requirements.txt --no-cache-dir" # Command to install dependencies
     startCommand: "streamlit run main.py --server.port $PORT --server.address 0.0.0.0" # Command to run the Streamlit app

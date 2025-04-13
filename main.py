@@ -44,7 +44,7 @@ def check_password():
                 # Check password
                 if "app_password" in st.secrets and password == st.secrets["app_password"]:
                     st.session_state["password_correct"] = True
-                    st.experimental_rerun()
+                    st.rerun() # Use the current standard function
                 else:
                     st.error("😕 Password incorrect")
             

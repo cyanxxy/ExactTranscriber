@@ -3,6 +3,7 @@ import tempfile
 import os
 import json
 import re
+import concurrent.futures
 from streamlit_ace import st_ace
 from google import genai
 from utils import (
@@ -20,30 +21,38 @@ from styles import apply_custom_styles, format_transcript_line
 def check_password():
     """Returns `True` if the user had the correct password."""
 
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        # Use st.secrets for password retrieval
-        if "app_password" in st.secrets and st.session_state["password"] == st.secrets["app_password"]:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store password in session state.
-        else:
-            st.session_state["password_correct"] = False
-
     # Initialize password_correct in session state if it doesn't exist
     if "password_correct" not in st.session_state:
-        st.session_state["password_correct"] = False # Default to False
+        st.session_state["password_correct"] = False
 
-    # Only show input if password is not correct.
+    # Only show input if password is not correct
     if not st.session_state["password_correct"]:
-        st.text_input(
-            "Password", type="password", on_change=password_entered, key="password"
-        )
-        # Display error only if a password attempt has been made and failed
-        if "password" in st.session_state and not st.session_state["password_correct"]:
-             st.error("😕 Password incorrect")
+        # Center the login form with some styling
+        st.markdown("<h3 style='text-align: center; margin-bottom: 20px;'>Audio Transcription</h3>", unsafe_allow_html=True)
+        
+        # Create a centered container for the login form
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown("<div style='background-color: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #eee;'>", unsafe_allow_html=True)
+            st.markdown("<h4 style='text-align: center; margin-bottom: 15px;'>Login</h4>", unsafe_allow_html=True)
+            
+            # Password input field
+            password = st.text_input("Password", type="password", key="password")
+            
+            # Login button
+            if st.button("Login", type="primary"):
+                # Check password
+                if "app_password" in st.secrets and password == st.secrets["app_password"]:
+                    st.session_state["password_correct"] = True
+                    st.experimental_rerun()
+                else:
+                    st.error("😕 Password incorrect")
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+        
         return False # Return False to block app execution
     else:
-        # Password correct.
+        # Password correct
         return True
 
 def main():
@@ -72,17 +81,26 @@ def main():
         
         st.markdown("<h4 style='margin-bottom: 10px;'>Select Transcription Model</h4>", unsafe_allow_html=True)
         
-        # Model selection with tooltips
-        model_selection = st.radio(
+        # Define model mapping to keep actual IDs for API but show friendly names in UI
+        model_mapping = {
+            "Gemini 2 Flash": "gemini-2.0-flash-001",
+            "Gemini 2.5 Pro": "gemini-2.5-pro-preview-03-25"
+        }
+        
+        # Model selection with tooltips using friendly names
+        model_display = st.radio(
             "",  # Empty label since we have the header above
-            options=["gemini-2.0-flash-001", "gemini-2.5-pro-preview-03-25"],
-            index=1,
+            options=list(model_mapping.keys()),
+            index=1,  # Default to Gemini 2.5 Pro
             horizontal=True,
             help="Choose between faster (Flash) or more accurate (Pro) transcription"
         )
         
+        # Get the actual model ID from the mapping
+        model_selection = model_mapping[model_display]
+        
         # Show model descriptions
-        if model_selection == "gemini-2.0-flash-001":
+        if model_display == "Gemini 2 Flash":
             st.caption("⚡ Optimized for speed, good for most transcriptions")
         else:
             st.caption("✨ Higher quality, better for complex audio or multiple speakers")
@@ -120,21 +138,15 @@ def main():
         with col2:
             topic = st.text_input("Topic")
             description = st.text_input("Description")
-        
-        # Simplified speaker input
-        speakers = st.text_input(
-            "Speakers (comma-separated)",
-            value="Speaker A"
-        ).split(',')
-        speakers = [s.strip() for s in speakers if s.strip()]
-        
-        speaker_roles = st.text_input(
-            "Roles (comma-separated)"
-        ).split(',')
-        speaker_roles = [r.strip() for r in speaker_roles if r.strip()]
-        
-        # Pad speaker_roles if needed
-        speaker_roles.extend([''] * (len(speakers) - len(speaker_roles)))
+
+        # Input for number of speakers
+        num_speakers = st.number_input(
+            "Number of Speakers",
+            min_value=1,
+            value=1,
+            step=1,
+            help="Specify the total number of distinct speakers in the audio."
+        )
 
     # File upload with visual enhancements
     with st.container():
@@ -195,10 +207,43 @@ def main():
                     # Generate transcription prompt
                     prompt_template = get_transcription_prompt(metadata)
                     prompt = prompt_template.render(
-                        speakers=speakers,
-                        speaker_roles=speaker_roles if any(speaker_roles) else None,
+                        num_speakers=num_speakers,
                         metadata=metadata
                     )
+
+                    # Define the worker function for processing a single chunk
+                    def process_chunk(args):
+                        i, chunk_path = args
+                        # Note: Direct st calls might not behave perfectly inside threads
+                        # Consider logging instead for production or more complex feedback
+                        # st.write(f"Processing chunk {i+1}...") # Simple status update (might interleave awkwardly)
+                        try:
+                            # Read chunk data
+                            with open(chunk_path, 'rb') as f:
+                                chunk_data = f.read()
+
+                            # Process chunk with Gemini API using the correct format
+                            chunk_response = client.models.generate_content(
+                                model=model_name,
+                                contents=[
+                                    prompt, # Pass the updated prompt including num_speakers
+                                    genai.types.Part.from_bytes(
+                                        data=chunk_data,
+                                        mime_type=f"audio/{file_format}",
+                                    ),
+                                ],
+                            )
+
+                            # Access text from the response
+                            chunk_text = chunk_response.text if hasattr(chunk_response, 'text') else chunk_response.candidates[0].content.parts[0].text
+                            adjusted_transcription = adjust_chunk_timestamps(chunk_text, i)
+                            return adjusted_transcription
+                        except Exception as e:
+                            # Log error instead of using st.error directly in thread
+                            print(f"Error processing chunk {i+1}: {e}")
+                            # Optionally, use st.error if running locally and testing, but be aware of potential issues
+                            # st.error(f"Error processing chunk {i+1}: {e}")
+                            return None # Return None on error for this chunk
 
                     # Determine file format for chunking
                     file_format = uploaded_file.type.split('/')[-1]
@@ -227,40 +272,32 @@ def main():
                             st.error("Failed to split audio file. Please try a different file.")
                             st.stop()
                         
-                        # Process each chunk and collect transcriptions
+                        # Process chunks in parallel
+                        status_container.info(f"Transcribing {num_chunks} chunks in parallel...")
                         all_transcriptions = []
-                        
-                        for i, chunk_path in enumerate(chunk_paths):
-                            # Update progress
-                            progress = int((i / num_chunks) * 100)
-                            progress_bar.progress(progress)
-                            status_container.info(f"Transcribing chunk {i+1} of {num_chunks}...")
-                            
-                            # Read chunk data
-                            with open(chunk_path, 'rb') as f:
-                                chunk_data = f.read()
-                            
-                            # Process chunk with Gemini API using the correct format
-                            chunk_response = client.models.generate_content(
-                                model=model_name,
-                                contents=[
-                                    prompt,
-                                    genai.types.Part.from_bytes(
-                                        data=chunk_data,
-                                        mime_type=f"audio/{file_format}",
-                                    ),
-                                ],
-                            )
-                            
-                            # Adjust timestamps based on chunk position
-                            # Access text from the response (different format in the new SDK)
-                            chunk_text = chunk_response.text if hasattr(chunk_response, 'text') else chunk_response.candidates[0].content.parts[0].text
-                            adjusted_transcription = adjust_chunk_timestamps(chunk_text, i)
-                            all_transcriptions.append(adjusted_transcription)
-                        
-                        # Combine all transcriptions
-                        status_container.info("Combining all transcriptions...")
-                        combined_transcription = combine_transcriptions(all_transcriptions)
+                        chunk_args = [(i, chunk_path) for i, chunk_path in enumerate(chunk_paths)]
+
+                        # Use ThreadPoolExecutor for parallel processing
+                        # You might adjust max_workers based on API rate limits or system resources
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                            # map() returns results in the order tasks were submitted
+                            results = executor.map(process_chunk, chunk_args)
+                            all_transcriptions = [res for res in results if res is not None] # Filter out None results from errors
+
+                        # --- Initialize combined_transcription earlier ---
+                        combined_transcription = "" # Default to empty string
+
+                        if not all_transcriptions or len(all_transcriptions) < num_chunks * 0.8: # Check if too many chunks failed
+                            st.warning("Significant errors occurred during chunk transcription. The result might be incomplete or empty.")
+                            if not all_transcriptions: # If ALL chunks failed, set specific message
+                                combined_transcription = "Transcription failed due to errors in all chunks."
+                            # If some chunks failed but not all, combined_transcription remains "" for now
+
+                        # Combine transcriptions (only if there are successful ones)
+                        status_container.info("Combining transcriptions...")
+                        if all_transcriptions: # Only combine if there are successful transcriptions
+                            combined_transcription = combine_transcriptions(all_transcriptions)
+                        # If no transcriptions were successful, the message is already set, or it remains "" if only some failed.
                         
                         # Clean up temporary chunk files
                         status_container.info("Cleaning up temporary files...")
@@ -279,14 +316,13 @@ def main():
                             pass
                         
                         # Update progress to 100%
-                        progress_bar.progress(100)
-                        status_container.success("Transcription completed!")
+                        # Remove progress bar logic as it's complex with parallel execution
+                        # progress_bar.progress(100) 
+                        status_container.success("Transcription processing finished!")
                         
                         # Store transcript in session state
-                        if 'transcript_text' not in st.session_state:
-                            st.session_state.transcript_text = combined_transcription
-                        if 'edited_transcript' not in st.session_state:
-                            st.session_state.edited_transcript = combined_transcription
+                        st.session_state.transcript_text = combined_transcription
+                        st.session_state.edited_transcript = combined_transcription
                     
                     else:
                         # Process the entire file directly if small enough

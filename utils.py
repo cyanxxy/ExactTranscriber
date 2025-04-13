@@ -71,15 +71,16 @@ def initialize_gemini(model_name="gemini-2.0-flash-001"):
 
 def get_transcription_prompt(metadata=None):
     """Return the Jinja2 template for transcription prompt"""
-    return Template("""Generate a transcript of the {{ content_type|default('episode', true) }}. Include timestamps and identify speakers.
+    # Updated prompt to use num_speakers and request specific speaker labeling
+    return Template("""Generate a detailed transcript of the {{ metadata.content_type|default('audio file', true) }}. 
+Include precise timestamps for each segment.
 
 {% if metadata and metadata.description %}
 Context about the content:
 {{ metadata.description }}
 {% endif %}
 
-Speakers are: 
-{% for speaker in speakers %}- {{ speaker }}{% if speaker_roles and speaker_roles[loop.index0] %} ({{ speaker_roles[loop.index0] }}){% endif %}{% if not loop.last %}\n{% endif %}{% endfor %}
+There are {{ num_speakers }} distinct speakers in this audio. Please identify and label each speaker consistently throughout the transcript using the format "Speaker 1:", "Speaker 2:", ..., "Speaker {{ num_speakers }}:".
 
 {% if metadata and metadata.topic %}
 The main topic is: {{ metadata.topic }}
@@ -88,6 +89,10 @@ The main topic is: {{ metadata.topic }}
 {% if metadata and metadata.language %}
 Primary language: {{ metadata.language }}
 {% endif %}
+
+Ensure the final transcript clearly differentiates between the speakers as requested. 
+Output format should strictly follow:
+[HH:MM:SS] Speaker X: Dialogue...
 
 eg:
 [00:00] Brady: Hello there.

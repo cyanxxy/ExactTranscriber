@@ -1,6 +1,38 @@
 import streamlit as st
 
 def apply_custom_styles():
+    """Applies custom CSS styles to the Streamlit app."""
+    custom_css = """
+    <style>
+        /* General container styling */
+        .styled-container {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #eee;
+            margin-bottom: 20px; /* Add consistent bottom margin */
+        }
+
+        /* Style for the transcript display area specifically */
+        .transcript-container p {
+            margin-bottom: 0.5em; /* Add spacing between transcript lines */
+            line-height: 1.6;
+        }
+        
+        /* You can add more specific styles here */
+
+    </style>
+    """
+    st.markdown(custom_css, unsafe_allow_html=True)
+
+# Placeholder for transcript line formatting - can be expanded later
+def format_transcript_line(line):
+    """Basic formatting for a transcript line (can be customized)."""
+    # Simple example: just return the line as is for now
+    # Could add logic here to parse timestamps/speakers and style them
+    return line.strip()
+
+def apply_custom_styles():
     st.markdown("""
         <style>
         /* Base styles for a minimal clean look */

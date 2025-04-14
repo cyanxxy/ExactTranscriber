@@ -71,34 +71,31 @@ def initialize_gemini(model_name="gemini-2.0-flash-001"):
 
 def get_transcription_prompt(metadata=None):
     """Return the Jinja2 template for transcription prompt"""
-    # Updated prompt to use num_speakers and request specific speaker labeling
-    return Template("""Generate a detailed transcript of the {{ metadata.content_type|default('audio file', true) }}. 
-Include precise timestamps for each segment.
+    # Enhanced prompt for better speaker diarization and consistency
+    return Template("""TASK: Perform accurate transcription and speaker diarization for the provided {{ metadata.content_type|default('audio file', true) }}.
 
-{% if metadata and metadata.description %}
-Context about the content:
-{{ metadata.description }}
-{% endif %}
+CONTEXT:
+{% if metadata and metadata.description %}- Description: {{ metadata.description }}
+{% endif %}{% if metadata and metadata.topic %}- Topic: {{ metadata.topic }}
+{% endif %}{% if metadata and metadata.language %}- Language: {{ metadata.language }}
+{% endif %}- Number of distinct speakers: {{ num_speakers }}
 
-There are {{ num_speakers }} distinct speakers in this audio. Please identify and label each speaker consistently throughout the transcript using the format "Speaker 1:", "Speaker 2:", ..., "Speaker {{ num_speakers }}:".
+INSTRUCTIONS:
+1. Transcribe the audio accurately.
+2. Perform speaker diarization: Identify the {{ num_speakers }} distinct speakers present in the audio.
+3. Consistently label each speaker throughout the entire transcript using the format "Speaker 1:", "Speaker 2:", ..., "Speaker {{ num_speakers }}:". Ensure that each label (e.g., "Speaker 1") always refers to the same individual.
+4. Include precise timestamps in [HH:MM:SS] format at the beginning of each speaker's utterance or segment.
 
-{% if metadata and metadata.topic %}
-The main topic is: {{ metadata.topic }}
-{% endif %}
+OUTPUT FORMAT:
+The output MUST strictly follow this format for each line:
+[HH:MM:SS] Speaker X: Dialogue text...
 
-{% if metadata and metadata.language %}
-Primary language: {{ metadata.language }}
-{% endif %}
+EXAMPLE:
+[00:00:05] Speaker 1: Hello, welcome to the meeting.
+[00:00:08] Speaker 2: Thanks for having me.
+[00:00:10] Speaker 1: Let's get started.
 
-Ensure the final transcript clearly differentiates between the speakers as requested. 
-Output format should strictly follow:
-[HH:MM:SS] Speaker X: Dialogue...
-
-eg:
-[00:00] Brady: Hello there.
-[00:02] Tim: Hi Brady.
-
-It is important to include the correct speaker names. Use the names you identified earlier. If you really don't know the speaker's name, identify them with a letter of the alphabet, eg there may be an unknown speaker 'A' and another unknown speaker 'B'.
+CRITICAL: Adhere strictly to the requested speaker labeling based on the {{ num_speakers }} distinct speakers identified. Maintain consistency in labeling throughout the transcript.
 
 If there is music or a short jingle playing, signify like so:
 [01:02] [MUSIC] or [01:02] [JINGLE]

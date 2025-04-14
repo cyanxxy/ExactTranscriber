@@ -15,7 +15,7 @@ from utils import (
     combine_transcriptions,
     format_transcript_for_export
 )
-from styles import apply_custom_styles, format_transcript_line
+from styles import apply_custom_styles, format_transcript_line # Keep both for now
 
 # --- Simple Password Authentication ---
 def check_password():
@@ -33,7 +33,7 @@ def check_password():
         # Create a centered container for the login form
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.markdown("<div style='background-color: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #eee;'>", unsafe_allow_html=True)
+            st.markdown("<div class='styled-container'>", unsafe_allow_html=True) # Use CSS class
             st.markdown("<h4 style='text-align: center; margin-bottom: 15px;'>Login</h4>", unsafe_allow_html=True)
             
             # Password input field
@@ -77,7 +77,7 @@ def main():
 
     # Model selection in a clean card-like container
     with st.container():
-        st.markdown("<div style='background-color: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 20px;'>", unsafe_allow_html=True)
+        st.markdown("<div class='styled-container'>", unsafe_allow_html=True) # Use CSS class
         
         st.markdown("<h4 style='margin-bottom: 10px;'>Select Transcription Model</h4>", unsafe_allow_html=True)
         
@@ -106,6 +106,8 @@ def main():
             st.caption("✨ Higher quality, better for complex audio or multiple speakers")
             
         st.markdown("</div>", unsafe_allow_html=True)
+
+    st.divider() # Add divider after model selection
     
     # Initialize Gemini client
     client, error_message, model_name = initialize_gemini(model_selection)
@@ -138,19 +140,20 @@ def main():
         with col2:
             topic = st.text_input("Topic")
             description = st.text_input("Description")
-
-        # Input for number of speakers
-        num_speakers = st.number_input(
-            "Number of Speakers",
-            min_value=1,
-            value=1,
-            step=1,
-            help="Specify the total number of distinct speakers in the audio."
-        )
+            # Move number of speakers input inside the second column
+            num_speakers = st.number_input(
+                "Number of Speakers",
+                min_value=1,
+                value=1,
+                step=1,
+                help="Specify the total number of distinct speakers in the audio."
+            )
+    
+    st.divider() # Add divider before file upload section
 
     # File upload with visual enhancements
     with st.container():
-        st.markdown("<div style='background-color: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #eee;'>", unsafe_allow_html=True)
+        st.markdown("<div class='styled-container'>", unsafe_allow_html=True) # Use CSS class
         
         st.markdown("<h4 style='margin-bottom: 10px;'>Upload Your Audio File</h4>", unsafe_allow_html=True)
         st.caption("Supported formats: MP3, WAV, OGG (max 200MB)")
@@ -356,7 +359,7 @@ def main():
                         
                         # Add a container with custom styling for better visual appearance
                         with st.container():
-                            st.markdown("<div class='transcript-container' style='background-color: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #eee;'>")
+                            st.markdown("<div class='styled-container transcript-container'>") # Combine classes
                             
                             # Format each line of the transcript
                             formatted_lines = []
@@ -408,7 +411,7 @@ def main():
                         
                         # Create a card-like container for export options
                         with st.container():
-                            st.markdown("<div style='background-color: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #eee;'>")
+                            st.markdown("<div class='styled-container'>") # Use CSS class
                             
                             # Description
                             st.markdown("Choose a format and download your transcript:")

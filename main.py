@@ -239,7 +239,8 @@ def main():
 
                             # Access text from the response
                             chunk_text = chunk_response.text if hasattr(chunk_response, 'text') else chunk_response.candidates[0].content.parts[0].text
-                            adjusted_transcription = adjust_chunk_timestamps(chunk_text, i)
+                            # Adjust timestamps using the SAME chunk duration used for splitting
+                            adjusted_transcription = adjust_chunk_timestamps(chunk_text, i, chunk_duration_ms=CHUNK_DURATION_MS)
                             return adjusted_transcription
                         except Exception as e:
                             # Log error instead of using st.error directly in thread
@@ -258,18 +259,22 @@ def main():
                     # Check file size to determine if chunking is needed
                     file_size_mb = uploaded_file.size / (1024 * 1024)
                     large_file = file_size_mb > 20  # 20MB threshold
+
+                    # --- Define Chunk Duration --- 
+                    # Use 2 minutes (120,000 ms) instead of the default 10 mins to reduce API timeout risk
+                    CHUNK_DURATION_MS = 120000
                     
                     if large_file:
                         # Create a status container for showing progress
                         status_container = st.empty()
-                        status_container.info("Processing large audio file (up to 4 hours). This may take some time...")
+                        status_container.info("Processing large audio file. This may take some time...")
                         
-                        # Create a progress bar
-                        progress_bar = st.progress(0)
+                        # Create a progress bar (Note: Progress bar update is complex with threading)
+                        # progress_bar = st.progress(0) 
                         
-                        # Split audio into chunks (default 10 minute chunks)
-                        status_container.info("Splitting audio into manageable chunks...")
-                        chunk_paths, num_chunks = chunk_audio_file(audio_data, file_format)
+                        # Split audio into chunks using the defined duration
+                        status_container.info(f"Splitting audio into {int(CHUNK_DURATION_MS/60000)}-minute chunks...")
+                        chunk_paths, num_chunks = chunk_audio_file(audio_data, file_format, chunk_duration_ms=CHUNK_DURATION_MS)
                         
                         if num_chunks == 0 or not chunk_paths:
                             st.error("Failed to split audio file. Please try a different file.")

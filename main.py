@@ -382,33 +382,35 @@ def main():
                         # Add an editor for the transcript using streamlit-ace
                         st.markdown("### Edit Transcript")
                         
-                        # Initialize session state if needed
-                        if 'edited_transcript' not in st.session_state:
-                            st.session_state.edited_transcript = st.session_state.transcript_text
+                        # Initialize session state for the editor's key if it doesn't exist.
+                        # Use the potentially already edited version if available, otherwise the original.
+                        if "transcript_editor" not in st.session_state:
+                            initial_edit_value = st.session_state.get("edited_transcript", st.session_state.get("transcript_text", ""))
+                            st.session_state.transcript_editor = initial_edit_value
                         
-                        # Use st_ace for a more advanced editor
-                        edited_transcript = st_ace(
-                            value=st.session_state.edited_transcript,
+                        # Use st_ace with auto_update=True. 
+                        # State is now managed by Streamlit via the key 'transcript_editor'.
+                        st_ace(
+                            # The 'value' argument is implicitly handled by the key now
                             language='text',
-                            theme='tomorrow_night',  # Return to original theme
+                            theme='tomorrow_night',
                             keybinding='vscode',
                             font_size=14,
                             tab_size=4,
                             show_gutter=True,
                             show_print_margin=False,
                             wrap=True,
-                            auto_update=False,
+                            auto_update=True,  # Enable auto-update
                             readonly=False,
                             height=400,
-                            key="transcript_editor"
+                            key="transcript_editor" # State bound to st.session_state.transcript_editor
                         )
                         
-                        # Explicitly update the session state with the edited transcript
-                        st.session_state.edited_transcript = edited_transcript
+                        # Sync the automatically updated state back to 'edited_transcript' 
+                        # for consistency with other parts of the app (like Export).
+                        st.session_state.edited_transcript = st.session_state.transcript_editor
                         
-                        # Add a save button to make it clear that changes are being saved
-                        if st.button("Save Changes", type="primary"):
-                            st.success("Transcript changes saved!")
+                        # No need for manual update or Save button with auto_update=True
                     
                     with tabs[2]:
                         # Export options with improved UI

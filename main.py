@@ -105,8 +105,8 @@ def main():
     # --- Model Selection --- 
     # Store selection in session state for use during processing rerun
     model_mapping = {
-        "Gemini 2 Flash": "gemini-2.0-flash-001",
-        "Gemini 2.5 Pro": "gemini-2.5-pro-preview-03-25"
+        "Gemini 2.0 Flash": "gemini-2.0-flash-001",
+        "Gemini 2.5 Flash": "gemini-2.5-flash-preview-04-17"
     }
     with st.container():
         st.markdown("<div class='styled-container'>", unsafe_allow_html=True)

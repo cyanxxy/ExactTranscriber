@@ -139,3 +139,4 @@ secrets.yaml
 secrets.yml
 .env*
 ! .env.example # Often good to commit an example env file
+.streamlit/secrets.toml

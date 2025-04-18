@@ -6,6 +6,7 @@ import re
 import concurrent.futures
 from streamlit_ace import st_ace
 from google import genai
+from google.genai import types as genai_types
 from utils import (
     initialize_gemini, 
     get_transcription_prompt, 
@@ -17,6 +18,15 @@ from utils import (
 )
 from styles import apply_custom_styles, format_transcript_line # Keep both for now
 import logging # Added logging import
+
+# MIME type mapping for audio formats
+MIME_TYPE_MAPPING = {
+    "mp3": "audio/mpeg",
+    "wav": "audio/wav",
+    "m4a": "audio/mp4",
+    "flac": "audio/flac",
+    "ogg": "audio/ogg"
+}
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO,
@@ -105,7 +115,7 @@ def main():
     # --- Model Selection --- 
     # Store selection in session state for use during processing rerun
     model_mapping = {
-        "Gemini 2.0 Flash": "gemini-2.0-flash-001",
+        "Gemini 2.0 Flash": "gemini-2.0-flash",
         "Gemini 2.5 Flash": "gemini-2.5-flash-preview-04-17"
     }
     with st.container():
@@ -114,11 +124,12 @@ def main():
         
         # Use a key to access the widget's state
         model_display = st.radio(
-            "", 
+            "Select transcription model", 
             options=list(model_mapping.keys()),
             index=1, # Default to Gemini 2.5 Pro
             horizontal=True,
             help="Choose between faster (Flash) or more accurate (Pro) transcription",
+            label_visibility="collapsed",
             key="model_display_radio" # Add a key
         )
         # Store the actual model ID in session state
@@ -267,9 +278,10 @@ def main():
                         i, chunk_path = args
                         try:
                             with open(chunk_path, 'rb') as f: chunk_data = f.read()
+                            mime_type = MIME_TYPE_MAPPING.get(file_format, f"audio/{file_format}")
                             chunk_response = client.models.generate_content(
                                 model=model_name,
-                                contents=[prompt, genai.types.Part.from_bytes(data=chunk_data, mime_type=f"audio/{file_format}")],
+                                contents=[prompt, genai_types.Part.from_bytes(data=chunk_data, mime_type=mime_type)],
                             )
                             chunk_text = chunk_response.text if hasattr(chunk_response, 'text') else chunk_response.candidates[0].content.parts[0].text
                             adjusted_transcription = adjust_chunk_timestamps(chunk_text, i, chunk_duration_ms=CHUNK_DURATION_MS)
@@ -309,9 +321,10 @@ def main():
                     except: pass
 
                 else: # Small file processing
+                    mime_type = MIME_TYPE_MAPPING.get(file_format, f"audio/{file_format}")
                     response = client.models.generate_content(
                         model=model_name,
-                        contents=[prompt, genai.types.Part.from_bytes(data=audio_data, mime_type=f"audio/{file_format}")]
+                        contents=[prompt, genai_types.Part.from_bytes(data=audio_data, mime_type=mime_type)]
                     )
                     response_text = response.text if hasattr(response, 'text') else response.candidates[0].content.parts[0].text
                     st.session_state.transcript_text = response_text

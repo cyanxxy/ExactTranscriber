@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from pydub import AudioSegment
 import io
 
-def initialize_gemini(model_name="gemini-2.0-flash-001"):
+def initialize_gemini(model_name="gemini-2.0-flash"):
     """
     Initializes the Gemini client.
     Uses API key from Streamlit secrets or environment variables.
@@ -54,10 +54,10 @@ def initialize_gemini(model_name="gemini-2.0-flash-001"):
         client = genai.Client(api_key=api_key)
         
         # Validate model name against common models
-        valid_models = ["gemini-2.0-flash-001", "gemini-2.5-flash-preview-04-17", "gemini-1.5-flash-latest", "gemini-1.0-pro"]
+        valid_models = ["gemini-2.0-flash", "gemini-2.5-flash-preview-04-17", "gemini-1.5-flash-latest", "gemini-1.0-pro"]
         if model_name not in valid_models:
-            st.warning(f"Model name '{model_name}' may not be valid. Using 'gemini-2.5-flash-preview-04-17'.")
-            model_name = "gemini-2.5-flash-preview-04-17"
+            st.warning(f"Model name '{model_name}' may not be valid. Using 'gemini-2.0-flash'.")
+            model_name = "gemini-2.0-flash"
         
         # Return client and model name (no error)
         return client, None, model_name

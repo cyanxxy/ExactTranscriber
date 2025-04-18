@@ -277,11 +277,14 @@ def main():
                     def process_chunk_worker(args): 
                         i, chunk_path = args
                         try:
-                            with open(chunk_path, 'rb') as f: chunk_data = f.read()
+                            # Inline chunk bytes for faster processing
+                            with open(chunk_path, 'rb') as f:
+                                chunk_data = f.read()
                             mime_type = MIME_TYPE_MAPPING.get(file_format, f"audio/{file_format}")
+                            file_part = genai_types.Part.from_bytes(data=chunk_data, mime_type=mime_type)
                             chunk_response = client.models.generate_content(
                                 model=model_name,
-                                contents=[prompt, genai_types.Part.from_bytes(data=chunk_data, mime_type=mime_type)],
+                                contents=[prompt, file_part],
                             )
                             chunk_text = chunk_response.text if hasattr(chunk_response, 'text') else chunk_response.candidates[0].content.parts[0].text
                             adjusted_transcription = adjust_chunk_timestamps(chunk_text, i, chunk_duration_ms=CHUNK_DURATION_MS)
@@ -296,14 +299,20 @@ def main():
                         results = executor.map(process_chunk_worker, chunk_args) 
                         all_transcriptions = [res for res in results if res is not None]
 
-                    # Combine
-                    combined_transcription = ""
-                    if not all_transcriptions or len(all_transcriptions) < num_chunks * 0.8:
-                        st.warning("Significant errors occurred during chunk transcription.") 
-                        if not all_transcriptions:
-                           combined_transcription = "Transcription failed due to errors in all chunks."
-                    if all_transcriptions:
-                         combined_transcription = combine_transcriptions(all_transcriptions)
+                    # Combine or fallback if chunk errors
+                    if all_transcriptions and len(all_transcriptions) >= num_chunks * 0.8:
+                        combined_transcription = combine_transcriptions(all_transcriptions)
+                    else:
+                        st.info("Falling back to full audio transcription due to chunk errors.")
+                        # Upload full audio via Files API for fallback
+                        mime_type_full = MIME_TYPE_MAPPING.get(file_format, f"audio/{file_format}")
+                        full_file_part = client.files.upload(file=file_path, config={"mimeType": mime_type_full})
+                        full_resp = client.models.generate_content(
+                            model=model_name,
+                            contents=[prompt, full_file_part],
+                        )
+                        combined_transcription = (full_resp.text if hasattr(full_resp, 'text') 
+                                                 else full_resp.candidates[0].content.parts[0].text)
 
                     # Store results in session state
                     st.session_state.transcript_text = combined_transcription

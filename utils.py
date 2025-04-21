@@ -136,11 +136,18 @@ def validate_audio_file(file):
     return True
 
 def convert_timestamp_to_srt(timestamp):
-    """Convert [MM:SS] format to SRT format (HH:MM:SS,mmm)"""
+    """Convert [MM:SS] or [HH:MM:SS] format to SRT format (HH:MM:SS,mmm)"""
     try:
-        minutes, seconds = map(int, timestamp.strip('[]').split(':'))
-        time = timedelta(minutes=minutes, seconds=seconds)
-        return f"{str(time).zfill(8)},000"
+        parts = timestamp.strip('[]').split(':')
+        if len(parts) == 3:
+            hours, minutes, seconds = map(int, parts)
+        elif len(parts) == 2:
+            hours = 0
+            minutes, seconds = map(int, parts)
+        else:
+            return "00:00:00,000"
+        time_delta = timedelta(hours=hours, minutes=minutes, seconds=seconds)
+        return f"{str(time_delta).zfill(8)},000"
     except:
         return "00:00:00,000"
 
@@ -166,9 +173,18 @@ def format_transcript_for_export(transcript_text, format='txt'):
 
                 # Convert timestamp to SRT format
                 start_time = convert_timestamp_to_srt(f"[{timestamp}]")
-                # Add 3 seconds for end time
-                minutes, seconds = map(int, timestamp.split(':'))
-                end_time = convert_timestamp_to_srt(f"[{minutes:02d}:{(seconds + 3):02d}]")
+                # Compute end time as start time + 3 seconds
+                parts = list(map(int, timestamp.split(':')))
+                if len(parts) == 3:
+                    hours, minutes, seconds = parts
+                elif len(parts) == 2:
+                    hours = 0
+                    minutes, seconds = parts
+                else:
+                    hours = minutes = seconds = 0
+                start_delta = timedelta(hours=hours, minutes=minutes, seconds=seconds)
+                end_delta = start_delta + timedelta(seconds=3)
+                end_time = f"{str(end_delta).zfill(8)},000"
 
                 # Format SRT entry
                 srt_lines.extend([

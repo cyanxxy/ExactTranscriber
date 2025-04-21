@@ -183,7 +183,7 @@ def main():
         st.markdown("<h4 style='margin-bottom: 10px;'>Upload Your Audio File</h4>", unsafe_allow_html=True)
         st.caption("Supported formats: MP3, WAV, OGG (max 200MB)")
         
-        uploaded_file = st.file_uploader("", type=['mp3', 'wav', 'ogg'], key="file_uploader_widget")
+        uploaded_file = st.file_uploader("Upload audio file", type=['mp3', 'wav', 'ogg'], key="file_uploader_widget")
         
         process_button = False
         
@@ -222,7 +222,7 @@ def main():
         st.session_state.error_message = None
         st.session_state.transcript_editor_content = "" 
         logging.info(f"Transcription started for file: {uploaded_file.name}")
-        st.rerun() 
+        st.rerun() # Rerun to display results now that status is 'complete'
 
     # --- Display Results or Spinner --- 
     # Check if processing status is 'processing' AND the filename matches the one being processed
@@ -445,21 +445,32 @@ def main():
                     st.caption(format_descriptions[export_format])
 
                 format_map = {"TXT": "txt", "SRT": "srt", "JSON": "json"}
+                mime_map = {"TXT": "text/plain", "SRT": "application/x-subrip", "JSON": "application/json"}
                 format_key = format_map[export_format]
-                export_content = st.session_state.get("edited_transcript", st.session_state.get("transcript_text", ""))
+                mime_type = mime_map[export_format]
+
+                # Always use latest editor content if available
+                export_content = st.session_state.get("transcript_editor_content", st.session_state.get("edited_transcript", st.session_state.get("transcript_text", "")))
                 formatted_content = format_transcript_for_export(export_content, format=format_key)
                 base_filename = os.path.splitext(st.session_state.current_file_name)[0]
                 export_filename = f"{base_filename}_transcript.{format_key}"
 
+                # Warn if edits are not saved
+                unsaved_edits = (
+                    st.session_state.get("transcript_editor_content", "") != st.session_state.get("edited_transcript", "")
+                )
+                if unsaved_edits:
+                    st.warning("You have unsaved edits. Please click 'Save Edits' before exporting to include your latest changes.")
+
                 with st.expander("Preview Export"):
-                     st.text(formatted_content[:500] + ("..." if len(formatted_content) > 500 else ""))
+                    st.text(formatted_content[:500] + ("..." if len(formatted_content) > 500 else ""))
                 with col2_exp:
-                     st.markdown("<br>", unsafe_allow_html=True)
-                     st.download_button(
-                         label=f"📥 Download {export_format.upper()}", data=formatted_content,
-                         file_name=export_filename, mime=f"text/{format_key}", type="primary",
-                         use_container_width=True, key="download_button"
-                     )
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.download_button(
+                        label=f"📥 Download {export_format.upper()}", data=formatted_content,
+                        file_name=export_filename, mime=mime_type, type="primary",
+                        use_container_width=True, key=f"download_button_{export_format}"
+                    )
                 st.markdown("</div>", unsafe_allow_html=True)
 
     # Handle case where an error occurred but no file is currently uploaded (e.g., Gemini init failed)

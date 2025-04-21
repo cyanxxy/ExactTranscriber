@@ -4,5 +4,7 @@ services:
     name: exact-transcriber # Choose a name for your service (same as in Render UI)
     env: python # Specifies the runtime environment
     plan: free # Specifies the instance type
-    buildCommand: "pip install -r requirements.txt --no-cache-dir" # Command to install dependencies
+    buildCommand: |
+      apt-get update && apt-get install -y ffmpeg && \
+      pip install -r requirements.txt --no-cache-dir # Install FFmpeg before Python dependencies
     startCommand: "streamlit run main.py --server.port $PORT --server.address 0.0.0.0" # Command to run the Streamlit app

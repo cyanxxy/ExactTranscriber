@@ -5,6 +5,6 @@ services:
     env: python # Specifies the runtime environment
     plan: free # Specifies the instance type
     buildCommand: |
-      apt-get update && apt-get install -y ffmpeg && \
-      pip install -r requirements.txt --no-cache-dir # Install FFmpeg before Python dependencies
+      apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/* && \
+      pip install -r requirements.txt --no-cache-dir # Install FFmpeg, clean up, then install Python deps
     startCommand: "streamlit run main.py --server.port $PORT --server.address 0.0.0.0" # Command to run the Streamlit app

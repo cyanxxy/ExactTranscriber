@@ -277,14 +277,11 @@ def main():
                     def process_chunk_worker(args): 
                         i, chunk_path = args
                         try:
-                            # Inline chunk bytes for faster processing
-                            with open(chunk_path, 'rb') as f:
-                                chunk_data = f.read()
                             mime_type = MIME_TYPE_MAPPING.get(file_format, f"audio/{file_format}")
-                            file_part = genai_types.Part.from_bytes(data=chunk_data, mime_type=mime_type)
+                            chunk_file = client.files.upload(file=chunk_path, config={"mimeType": mime_type})
                             chunk_response = client.models.generate_content(
                                 model=model_name,
-                                contents=[prompt, file_part],
+                                contents=[prompt, chunk_file],
                             )
                             chunk_text = chunk_response.text if hasattr(chunk_response, 'text') else chunk_response.candidates[0].content.parts[0].text
                             adjusted_transcription = adjust_chunk_timestamps(chunk_text, i, chunk_duration_ms=CHUNK_DURATION_MS)
@@ -331,9 +328,10 @@ def main():
 
                 else: # Small file processing
                     mime_type = MIME_TYPE_MAPPING.get(file_format, f"audio/{file_format}")
+                    file_obj = client.files.upload(file=file_path, config={"mimeType": mime_type})
                     response = client.models.generate_content(
                         model=model_name,
-                        contents=[prompt, genai_types.Part.from_bytes(data=audio_data, mime_type=mime_type)]
+                        contents=[prompt, file_obj]
                     )
                     response_text = response.text if hasattr(response, 'text') else response.candidates[0].content.parts[0].text
                     st.session_state.transcript_text = response_text

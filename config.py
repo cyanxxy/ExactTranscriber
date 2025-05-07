@@ -14,9 +14,7 @@ LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 # Supported Gemini model IDs
 GEMINI_MODELS = {
     "Gemini 2.0 Flash": "gemini-2.0-flash",
-    "Gemini 2.5 Flash": "gemini-2.5-flash-preview-04-17",
-    "Gemini 1.5 Flash": "gemini-1.5-flash-latest",
-    "Gemini 1.0 Pro": "gemini-1.0-pro"
+    "Gemini 2.5 Flash": "gemini-2.5-flash-preview-04-17"
 }
 
 # Default model to use

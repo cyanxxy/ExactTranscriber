@@ -5,7 +5,9 @@ services:
     env: python # Specifies the runtime environment
     plan: free # Specifies the instance type
     runtime: python3
-    buildCommand: pip install -r requirements.txt --no-cache-dir
+    buildCommand: >
+      pip install --upgrade pip &&
+      pip install -r requirements.txt --no-cache-dir
     startCommand: "streamlit run main.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
     envVars:
       - key: PYTHON_VERSION
@@ -18,5 +20,13 @@ services:
       - key: STREAMLIT_SERVER_ADDRESS
         value: "0.0.0.0"
     healthCheckPath: "/_stcore/health"
-    # Buildpacks are configured in .render-buildpacks.txt
-    # FFmpeg is installed via the Aptfile
+    buildFilter:
+      paths:
+        - .render-packages.txt
+        - .render-buildpacks.txt
+        - Aptfile
+        - requirements.txt
+        - runtime.txt
+        - main.py
+        - "*.py"
+        - Procfile

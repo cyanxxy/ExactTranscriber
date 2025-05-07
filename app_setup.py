@@ -1,6 +1,9 @@
 """
-Setup module for ExactTranscriber application.
+Application setup module for ExactTranscriber application.
 This module handles initialization of logging and setup of the application.
+
+Note: This file was renamed from setup.py to app_setup.py to avoid conflicts with
+Python's built-in package setup system.
 """
 import os
 import logging

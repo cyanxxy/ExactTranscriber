@@ -1,12 +1,14 @@
 [project]
-name = "repl-nix-workspace"
+name = "exact-transcriber"
 version = "0.1.0"
-description = "Add your description here"
+description = "A Streamlit application for accurate audio transcription using Google Gemini API"
 requires-python = ">=3.11"
 dependencies = [
     "google-generativeai>=0.8.4",
     "jinja2>=3.1.6",
     "pydub>=0.25.1",
-    "sift-stack-py>=0.4.2",
     "streamlit>=1.43.1",
+    "streamlit_ace>=0.1.1",
+    "numpy>=1.24.0",
+    "protobuf>=4.25.1",
 ]

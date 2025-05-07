@@ -36,7 +36,7 @@ def adjust_chunk_timestamps(transcription: str, chunk_index: int,
             continue
             
         # Find timestamp pattern [MM:SS] or [HH:MM:SS]
-        timestamp_match = re.match(r'\[([\d+(?::\d+)+)\](.*)', line)
+        timestamp_match = re.match(r'\[([\d:]+)\](.*)', line)
         if timestamp_match:
             # Extract timestamp and content
             timestamp = timestamp_match.group(1)

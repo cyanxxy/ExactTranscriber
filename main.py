@@ -7,32 +7,32 @@ import concurrent.futures
 from streamlit_ace import st_ace
 from google import genai
 from google.genai import types as genai_types
-from utils import (
-    initialize_gemini, 
-    get_transcription_prompt, 
-    validate_audio_file, 
-    chunk_audio_file, 
-    adjust_chunk_timestamps, 
+
+# Import from new module structure
+from config import (
+    MIME_TYPE_MAPPING, 
+    CHUNK_DURATION_MS
+)
+from api_client import (
+    initialize_gemini,
+    get_transcription_prompt
+)
+from file_utils import (
+    validate_audio_file,
+    chunk_audio_file
+)
+from transcript_utils import (
+    adjust_chunk_timestamps,
     combine_transcriptions,
     format_transcript_for_export
 )
-from styles import apply_custom_styles, format_transcript_line # Keep both for now
+from styles import apply_custom_styles, format_transcript_line
+from app_setup import setup_logging, setup_streamlit_page
+
 import logging # Added logging import
 
-# MIME type mapping for audio formats
-MIME_TYPE_MAPPING = {
-    "mp3": "audio/mpeg",
-    "wav": "audio/wav",
-    "m4a": "audio/mp4",
-    "flac": "audio/flac",
-    "ogg": "audio/ogg"
-}
-
-# --- Logging Setup ---
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s',
-                    filename='transcriber_app.log',
-                    filemode='a')
+# Initialize logging
+setup_logging()
 
 # --- Simple Password Authentication ---
 def check_password():
@@ -74,32 +74,15 @@ def check_password():
 
 def main():
     logging.info("Application started/restarted.")
-    # Page configuration must be the first Streamlit command
-    st.set_page_config(
-        page_title="Audio Transcription",
-        page_icon="🎙️",
-        layout="centered"
-    )
+    # Use the centralized setup function instead of direct st.set_page_config
+    setup_streamlit_page()
 
     # Apply custom styles after page config
     apply_custom_styles()
 
     # --- Initialize Session State --- 
-    if "password_correct" not in st.session_state:
-        st.session_state.password_correct = False # Ensure password state is initialized too
-    if "processing_status" not in st.session_state:
-        st.session_state.processing_status = "idle" # idle, processing, complete, error
-    if "current_file_name" not in st.session_state:
-        st.session_state.current_file_name = None
-    if "transcript_text" not in st.session_state:
-        st.session_state.transcript_text = None
-    if "edited_transcript" not in st.session_state:
-        st.session_state.edited_transcript = None
-    if "error_message" not in st.session_state:
-        st.session_state.error_message = None
-    # Initialize editor content state separately
-    if "transcript_editor_content" not in st.session_state:
-        st.session_state.transcript_editor_content = ""
+    from state_manager import initialize_state
+    initialize_state()
 
     logging.info(f"Initial state: processing_status={st.session_state.processing_status}, current_file_name={st.session_state.current_file_name}")
 
@@ -114,10 +97,7 @@ def main():
 
     # --- Model Selection --- 
     # Store selection in session state for use during processing rerun
-    model_mapping = {
-        "Gemini 2.0 Flash": "gemini-2.0-flash",
-        "Gemini 2.5 Flash": "gemini-2.5-flash-preview-04-17"
-    }
+    from config import GEMINI_MODELS as model_mapping
     with st.container():
         st.markdown("<div class='styled-container'>", unsafe_allow_html=True)
         st.markdown("<h4 style='margin-bottom: 10px;'>Select Transcription Model</h4>", unsafe_allow_html=True)
@@ -269,7 +249,7 @@ def main():
                 elif file_format == 'x-wav': file_format = 'wav'
                 file_size_mb = uploaded_file.size / (1024 * 1024)
                 large_file = file_size_mb > 20
-                CHUNK_DURATION_MS = 120000
+                # CHUNK_DURATION_MS is now imported from config.py
 
                 # --- Actual Processing --- 
                 if large_file:

@@ -10,5 +10,5 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.11
-    # Using Render's preinstalled packages instead of apt-get
-    # FFmpeg is already available in Render's standard environment
+      # FFmpeg should already be installed in Render's environment
+      # If it's not, add a service level environment variable to inform support

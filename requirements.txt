@@ -12,3 +12,6 @@ protobuf>=4.25.1
 
 # For audio processing
 numpy>=1.24.0
+
+# Note: FFmpeg is required for audio processing with pydub
+# FFmpeg should be pre-installed in Render's environment

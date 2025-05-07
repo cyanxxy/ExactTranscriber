@@ -5,9 +5,7 @@ services:
     env: python # Specifies the runtime environment
     plan: free # Specifies the instance type
     runtime: python3
-    buildCommand: >
-      pip install --upgrade pip &&
-      pip install -r requirements.txt --no-cache-dir
+    buildCommand: ./render-build.sh
     startCommand: "streamlit run main.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
     envVars:
       - key: PYTHON_VERSION
@@ -27,6 +25,7 @@ services:
         - Aptfile
         - requirements.txt
         - runtime.txt
+        - render-build.sh
         - main.py
         - "*.py"
         - Procfile

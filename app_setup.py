@@ -45,6 +45,15 @@ def setup_environment() -> None:
     Initialize the application environment.
     This includes logging and Streamlit page configuration.
     """
+    # Configure logging
     setup_logging()
+    
+    # Configure Streamlit
     setup_streamlit_page()
+    
+    # Check if running in Render environment
+    if 'RENDER' in os.environ:
+        logging.info("Running in Render environment")
+        # Additional Render-specific setup can be added here
+    
     logging.info("Application setup complete")

@@ -1,17 +1,21 @@
 # Core dependencies
-streamlit>=1.28.0
-pydub>=0.25.1
-streamlit_ace>=0.1.1
+streamlit==1.32.0
+pydub==0.25.1
+streamlit_ace==0.1.1
 
 # Google Gemini API
-google-genai>=0.1.0
+google-generativeai==0.3.1
 
 # Supporting libraries
-Jinja2>=3.1.2
-protobuf>=4.25.1
+Jinja2==3.1.3
+protobuf==4.25.1
 
 # For audio processing
-numpy>=1.24.0
+numpy==1.24.3
 
 # Note: FFmpeg is required for audio processing with pydub
-# FFmpeg should be pre-installed in Render's environment
+# FFmpeg is installed via the Aptfile and heroku-buildpack-apt
+
+# Specify exact Python version for consistency
+# This matches what's in render.yaml
+# python_version=3.11.11

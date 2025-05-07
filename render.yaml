@@ -6,9 +6,17 @@ services:
     plan: free # Specifies the instance type
     runtime: python3
     buildCommand: pip install -r requirements.txt --no-cache-dir
-    startCommand: "streamlit run main.py --server.port $PORT --server.address 0.0.0.0" # Command to run the Streamlit app
+    startCommand: "streamlit run main.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.11
-      # FFmpeg should already be installed in Render's environment
-      # If it's not, add a service level environment variable to inform support
+      # Required for Streamlit to work correctly
+      - key: STREAMLIT_SERVER_ENABLE_CORS
+        value: "false"
+      - key: STREAMLIT_SERVER_HEADLESS
+        value: "true"
+      - key: STREAMLIT_SERVER_ADDRESS
+        value: "0.0.0.0"
+    healthCheckPath: "/_stcore/health"
+    # Buildpacks are configured in .render-buildpacks.txt
+    # FFmpeg is installed via the Aptfile

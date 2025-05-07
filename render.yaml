@@ -4,7 +4,11 @@ services:
     name: exact-transcriber # Choose a name for your service (same as in Render UI)
     env: python # Specifies the runtime environment
     plan: free # Specifies the instance type
-    buildCommand: |
-      apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/* && \
-      pip install -r requirements.txt --no-cache-dir # Install FFmpeg, clean up, then install Python deps
+    runtime: python3
+    buildCommand: pip install -r requirements.txt --no-cache-dir
     startCommand: "streamlit run main.py --server.port $PORT --server.address 0.0.0.0" # Command to run the Streamlit app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+    # Using Render's preinstalled packages instead of apt-get
+    # FFmpeg is already available in Render's standard environment

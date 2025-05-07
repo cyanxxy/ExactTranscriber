@@ -102,20 +102,33 @@ def main():
         st.markdown("<div class='styled-container'>", unsafe_allow_html=True)
         st.markdown("<h4 style='margin-bottom: 10px;'>Select Transcription Model</h4>", unsafe_allow_html=True)
         
+        # Get available model options
+        model_options = list(model_mapping.keys())
+        
+        # Find default index (prefer Gemini 2.5 Flash if available)
+        default_model_name = "Gemini 2.5 Flash"
+        default_index = 0  # Fallback to first option
+        
+        if default_model_name in model_options:
+            default_index = model_options.index(default_model_name)
+        
         # Use a key to access the widget's state
         model_display = st.radio(
             "Select transcription model", 
-            options=list(model_mapping.keys()),
-            index=1, # Default to Gemini 2.5 Pro
+            options=model_options,
+            index=default_index,
             horizontal=True,
             help="Choose between faster (Flash) or more accurate (Pro) transcription",
             label_visibility="collapsed",
             key="model_display_radio" # Add a key
         )
         # Store the actual model ID in session state
-        st.session_state.selected_model_id = model_mapping[model_display]
+        # Use get() with a default value to prevent KeyError
+        default_model = model_mapping.get("Gemini 2.5 Flash", "gemini-2.5-flash-preview-04-17")
+        st.session_state.selected_model_id = model_mapping.get(model_display, default_model)
 
-        if model_display == "Gemini 2 Flash":
+        # Display appropriate caption based on model type
+        if model_display and "Flash" in model_display:
             st.caption("⚡ Optimized for speed, good for most transcriptions")
         else:
             st.caption("✨ Higher quality, better for complex audio or multiple speakers")

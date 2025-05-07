@@ -2,124 +2,159 @@ import streamlit as st
 
 def apply_custom_styles():
     """Applies custom CSS styles to the Streamlit app."""
-    st.markdown("""
-        <style>
-        /* General container styling */
-        .styled-container {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #eee;
-            margin-bottom: 20px; /* Add consistent bottom margin */
+    custom_css = """
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        body, .stApp, .stButton > button, .stTextInput input, .stTextArea textarea, .stSelectbox select, .stRadio div, .stFileUploader label, .streamlit-expanderHeader, .stMarkdown p, .stCaption p {
+            font-family: 'Inter', sans-serif !important;
         }
-        
-        /* Base styles for a minimal clean look */
+
+        /* Headings */
+        h1 {
+            text-align: center;
+            margin-bottom: 30px !important; /* Ensure override if needed */
+            color: #1E88E5 !important;
+            font-weight: 700 !important;
+            font-size: 2.5rem; /* Example size, adjust as needed */
+        }
+        h4 { /* For section titles */
+            font-weight: 600 !important;
+            color: #333333 !important; /* Darker for better contrast */
+            margin-bottom: 15px !important;
+            font-size: 1.25rem;
+        }
+
+        /* General Layout & Containers */
         .main .block-container {
             padding-top: 2rem;
             padding-bottom: 2rem;
         }
-        
-        /* Streamlit component styling */
-        div.stButton > button {
-            width: 100%;
-            border-radius: 4px;
-            font-weight: 500;
+        .styled-container {
+            background-color: #f8f9fa; /* Light gray background */
+            padding: 20px; /* Increased padding */
+            border-radius: 8px;
+            border: 1px solid #dee2e6; /* Slightly softer border */
+            margin-bottom: 25px; /* Increased consistent bottom margin */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05); /* Subtle shadow */
         }
-        
-        /* Transcript styling */
-        .timestamp {
-            color: #888;
-            font-family: monospace;
-            font-size: 0.9em;
-            font-weight: 500;
-            background-color: rgba(0,0,0,0.05);
-            padding: 2px 4px;
-            border-radius: 3px;
-            margin-right: 6px;
+
+        /* Buttons */
+        div.stButton > button { /* General button style */
+            width: 100%; /* Make buttons take full width of their container */
+            border-radius: 6px !important; /* Slightly more rounded */
+            font-weight: 500 !important;
+            padding: 0.6rem 1rem !important;
+            transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, border-color 0.2s ease-in-out !important;
+            border: 1px solid transparent; /* Base border */
         }
-        
-        .speaker {
-            color: #1E88E5;
-            font-weight: 600;
-            margin-right: 4px;
+
+        /* Primary buttons */
+        div.stButton > button[kind="primary"] {
+            background-color: #1E88E5 !important;
+            color: white !important;
+            border-color: #1E88E5 !important;
         }
-        
-        .special-event {
-            color: #6C757D;
-            font-style: italic;
-            background-color: rgba(0,0,0,0.03);
-            padding: 2px 6px;
-            border-radius: 3px;
+        div.stButton > button[kind="primary"]:hover {
+            background-color: #1A75C4 !important; /* Darker blue on hover */
+            border-color: #1A75C4 !important;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1) !important;
         }
-        
-        /* Style for the transcript display area */
-        .transcript-container p {
-            margin-bottom: 0.5em; /* Add spacing between transcript lines */
-            line-height: 1.6;
+        div.stButton > button[kind="primary"]:active {
+            background-color: #1665A5 !important; /* Even darker on active */
+            border-color: #1665A5 !important;
         }
-        
-        /* Transcript container styling */
-        .stMarkdown {
-            line-height: 1.6;
+
+        /* Secondary/Default buttons (Streamlit often uses default styling if not primary) */
+        /* This targets buttons that are NOT primary. More specific selectors might be needed if you have other button types. */
+        div.stButton > button:not([kind="primary"]) {
+            background-color: #ffffff !important;
+            color: #1E88E5 !important;
+            border: 1px solid #1E88E5 !important;
         }
-        
-        /* Add spacing between transcript lines */
-        .stMarkdown p {
-            margin-bottom: 12px;
+        div.stButton > button:not([kind="primary"]):hover {
+            background-color: #f0f7ff !important; /* Light blueish tint on hover */
+            border-color: #1A75C4 !important;
+            color: #1A75C4 !important;
         }
-        
-        /* Make alerts less intrusive */
+
+        /* File Uploader Label */
+        div[data-testid="stFileUploader"] > label {
+            font-weight: 500 !important;
+            color: #333333 !important;
+            font-size: 1rem; /* Consistent font size */
+        }
+
+        /* Radio Buttons */
+        .stRadio > label > div:first-child { /* Targets the label text of the radio group */
+            font-weight: 600 !important; /* Makes 'Select Transcription Model' title bold */
+            color: #333333 !important;
+            margin-bottom: 10px !important; /* Space below title */
+        }
+        .stRadio > div[role="radiogroup"] > label { /* Target individual radio items */
+            background-color: #f0f3f5;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-right: 10px; /* Spacing for horizontal layout */
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+            border: 1px solid transparent;
+        }
+        .stRadio > div[role="radiogroup"] > label:hover {
+            background-color: #e0e5e9;
+        }
+        .stRadio > div[role="radiogroup"] > label input[type="radio"]:checked + div {
+            font-weight: 600 !important; /* Make selected text bolder */
+        }
+        .stRadio > div[role="radiogroup"] > label[data-is-checked="true"] {
+             background-color: #ddeaff !important; /* Light blue for selected */
+             border: 1px solid #1E88E5 !important;
+             color: #1E88E5 !important;
+        }
+
+        /* Alerts */
         .stAlert {
             padding: 0.75rem;
             border-radius: 4px;
             margin-bottom: 1rem;
         }
-        
-        /* Simple, clean tab styling */
-        .stTabs {
-            margin-top: 1rem;
-        }
-        
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 0;
-            border-bottom: 2px solid #e6e9ef;
-        }
-        
-        .stTabs [data-baseweb="tab"] {
-            padding: 10px 24px;
+
+        /* Tabs */
+        .stTabs [aria-selected="true"] {
+            background-color: #1E88E5; /* Blue accent for selected tab */
+            color: white;
             font-weight: 600;
-            font-size: 1rem;
-            border: none;
-            background: transparent;
-            color: #666;
-            margin-right: 8px;
+            border-radius: 6px 6px 0 0; /* Match tab radius */
         }
-        
-        .stTabs [data-baseweb="tab"][aria-selected="true"] {
-            color: #1E88E5;
-            background-color: rgba(30, 136, 229, 0.1);
-            border-bottom: 3px solid #1E88E5;
-            margin-bottom: -2px;
-        }
-        
-        .stTabs [data-baseweb="tab-highlight"] {
-            display: none;
-        }
-        
-        .stTabs [data-baseweb="tab-panel"] {
-            padding: 1rem 0;
-        }
-        
-        /* Expander styling */
+
+        /* Expander */
         .streamlit-expanderHeader {
             font-size: 1rem;
             font-weight: 500;
         }
-        
-        /* Footer styling */
+
+        /* Transcript */
+        .timestamp {
+            font-weight: bold;
+            color: #007bff; /* Blue for timestamps */
+        }
+        .speaker {
+            font-weight: bold;
+            color: #28a745; /* Green for speakers */
+        }
+        .special-event {
+            font-style: italic;
+            color: #5a6268; /* Darker gray for special events */
+        }
+        .transcript-container p, .stMarkdown p { /* General paragraph styling within transcript display */
+            margin-bottom: 0.75em !important;
+            line-height: 1.7 !important;
+        }
+
+        /* Hide default Streamlit footer */
         footer {display: none;}
-        </style>
-    """, unsafe_allow_html=True)
+    </style>
+    """
+    st.markdown(custom_css, unsafe_allow_html=True)
 
 def format_transcript_line(line):
     """Format a transcript line with styled timestamps and speakers"""

@@ -92,8 +92,8 @@ def main():
 
     # --- Rest of your app code starts here ---
 
-    # Clean, minimal header
-    st.markdown("<h1 style='text-align: center; margin-bottom: 30px; color: #1E88E5;'>Audio Transcription</h1>", unsafe_allow_html=True)
+    # Clean, minimal header (styling now primarily from styles.py)
+    st.markdown("<h1>Audio Transcription</h1>", unsafe_allow_html=True)
 
     # --- Model Selection --- 
     # Store selection in session state for use during processing rerun

@@ -229,6 +229,10 @@ def main():
     if st.session_state.processing_status == "processing" and uploaded_file and st.session_state.current_file_name == uploaded_file.name:
         
         with st.spinner("Processing your audio file... This might take a while."):
+            # Variables to track temporary resources for proper cleanup
+            file_path = None
+            chunk_paths = []
+            
             try:
                 # --- Re-fetch necessary variables/context for processing --- 
                 # Get audio data safely (assuming file_uploader widget state persists)
@@ -238,8 +242,12 @@ def main():
                 with tempfile.NamedTemporaryFile(delete=False, suffix=uploaded_file.name, mode='wb') as tmp_file:
                     tmp_file.write(audio_data)
                     file_path = tmp_file.name
-                try: os.chmod(file_path, 0o600)
-                except: pass
+                    logging.info(f"Created temporary file for uploaded audio: {file_path}")
+                
+                try:
+                    os.chmod(file_path, 0o600)  # Read/write for owner only
+                except Exception as perm_err:
+                    logging.warning(f"Could not set permissions on temporary file: {str(perm_err)}")
 
                 # Get client (already initialized above, check if still valid)
                 if not client: # Re-check client status
@@ -278,18 +286,45 @@ def main():
                         i, chunk_path = args
                         try:
                             mime_type = MIME_TYPE_MAPPING.get(file_format, f"audio/{file_format}")
-                            chunk_file = client.files.upload(file=chunk_path, config={"mimeType": mime_type})
-                            chunk_response = client.models.generate_content(
-                                model=model_name,
-                                contents=[prompt, chunk_file],
-                            )
-                            chunk_text = chunk_response.text if hasattr(chunk_response, 'text') else chunk_response.candidates[0].content.parts[0].text
+                            
+                            # API upload step - specific error handling
+                            try:
+                                chunk_file = client.files.upload(file=chunk_path, config={"mimeType": mime_type})
+                            except Exception as upload_err:
+                                logging.error(f"Failed to upload chunk {i+1} to Gemini API: {str(upload_err)}")
+                                if "unauthorized" in str(upload_err).lower() or "authentication" in str(upload_err).lower():
+                                    raise ValueError(f"API authentication error: {str(upload_err)}")
+                                if "quota" in str(upload_err).lower():
+                                    raise ValueError(f"API quota exceeded: {str(upload_err)}")
+                                raise ValueError(f"Chunk upload failed: {str(upload_err)}")
+                            
+                            # Transcription step - specific error handling
+                            try:
+                                chunk_response = client.models.generate_content(
+                                    model=model_name,
+                                    contents=[prompt, chunk_file],
+                                )
+                            except Exception as transcribe_err:
+                                logging.error(f"Failed to transcribe chunk {i+1}: {str(transcribe_err)}")
+                                raise ValueError(f"Transcription API error: {str(transcribe_err)}")
+                            
+                            # Extract transcript text
+                            try:
+                                chunk_text = chunk_response.text if hasattr(chunk_response, 'text') else chunk_response.candidates[0].content.parts[0].text
+                            except Exception as extract_err:
+                                logging.error(f"Failed to extract text from chunk {i+1} response: {str(extract_err)}")
+                                raise ValueError(f"Could not extract transcript text: {str(extract_err)}")
+                            
+                            # Adjust timestamps
                             adjusted_transcription = adjust_chunk_timestamps(chunk_text, i, chunk_duration_ms=CHUNK_DURATION_MS)
+                            logging.info(f"Successfully processed chunk {i+1}/{num_chunks}")
                             return adjusted_transcription
+                        except ValueError as ve:
+                            # Specific known errors already logged above
+                            return None
                         except Exception as e:
-                            print(f"Error processing chunk {i+1}: {e}") # Log error
-                            # Optionally signal error more formally if needed
-                            return None 
+                            logging.error(f"Unexpected error processing chunk {i+1}: {str(e)}", exc_info=True)
+                            return None
 
                     # Process chunks using the locally defined worker
                     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -317,56 +352,125 @@ def main():
                     st.session_state.transcript_editor_content = combined_transcription # Update editor base
                     st.session_state.processing_status = "complete"
 
-                    # Cleanup chunks
-                    for chunk_path in chunk_paths:
-                        try: os.unlink(chunk_path)
-                        except: pass
-                    try:
-                        temp_dir = os.path.dirname(chunk_paths[0]) if chunk_paths else None
-                        if temp_dir and os.path.exists(temp_dir): os.rmdir(temp_dir)
-                    except: pass
+                        # Cleanup chunks
+                    if chunk_paths:
+                        logging.info(f"Cleaning up {len(chunk_paths)} chunk files...")
+                        temp_dir = None
+                        for chunk_path in chunk_paths:
+                            if os.path.exists(chunk_path):
+                                try: 
+                                    os.unlink(chunk_path)
+                                    if not temp_dir:
+                                        temp_dir = os.path.dirname(chunk_path)
+                                except Exception as e: 
+                                    logging.warning(f"Failed to remove chunk file {chunk_path}: {str(e)}")
+                        
+                        # Try to remove the temp directory if it exists and is empty
+                        if temp_dir and os.path.exists(temp_dir):
+                            try:
+                                if not os.listdir(temp_dir): 
+                                    os.rmdir(temp_dir)
+                                    logging.info(f"Removed temporary directory: {temp_dir}")
+                            except Exception as e:
+                                logging.warning(f"Failed to remove temp directory {temp_dir}: {str(e)}")
 
                 else: # Small file processing
                     mime_type = MIME_TYPE_MAPPING.get(file_format, f"audio/{file_format}")
-                    file_obj = client.files.upload(file=file_path, config={"mimeType": mime_type})
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=[prompt, file_obj]
-                    )
-                    response_text = response.text if hasattr(response, 'text') else response.candidates[0].content.parts[0].text
-                    st.session_state.transcript_text = response_text
-                    st.session_state.edited_transcript = response_text 
-                    st.session_state.transcript_editor_content = response_text # Update editor base
-                    st.session_state.processing_status = "complete"
+                    try:
+                        file_obj = client.files.upload(file=file_path, config={"mimeType": mime_type})
+                    except Exception as upload_err:
+                        logging.error(f"Failed to upload audio file to Gemini API: {str(upload_err)}")
+                        if "unauthorized" in str(upload_err).lower():
+                            raise ValueError("API authentication error. Please check your API key.")
+                        elif "quota" in str(upload_err).lower():
+                            raise ValueError("API quota exceeded. Please try again later.")
+                        else:
+                            raise ValueError(f"File upload failed: {str(upload_err)}")
+                            
+                    try:
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=[prompt, file_obj]
+                        )
+                        
+                        response_text = response.text if hasattr(response, 'text') else response.candidates[0].content.parts[0].text
+                        st.session_state.transcript_text = response_text
+                        st.session_state.edited_transcript = response_text 
+                        st.session_state.transcript_editor_content = response_text # Update editor base
+                        st.session_state.processing_status = "complete"
+                    except Exception as transcribe_err:
+                        logging.error(f"Transcription API error: {str(transcribe_err)}")
+                        raise ValueError(f"Transcription failed: {str(transcribe_err)}")
 
                 # Cleanup original temp file (always do this after processing)
-                try: os.unlink(file_path)
-                except: pass
+                if file_path and os.path.exists(file_path):
+                    try: 
+                        os.unlink(file_path)
+                        logging.info(f"Removed temporary file: {file_path}")
+                    except Exception as e: 
+                        logging.warning(f"Failed to remove temporary file {file_path}: {str(e)}")
 
                 logging.info(f"Transcription successful for file: {uploaded_file.name}")
                 st.rerun() # Rerun to display results now that status is 'complete'
 
-            except Exception as e:
-                error_str = str(e)
-                st.error(f"Transcription failed: {error_str}")
+            except ValueError as ve:
+                # Handle known error types with user-friendly messages
+                error_str = str(ve)
+                user_message = error_str
+                
+                # Update application state
+                st.error(f"Transcription failed: {user_message}")
                 st.session_state.processing_status = "error"
-                st.session_state.error_message = error_str
+                st.session_state.error_message = user_message
+                logging.error(f"Transcription failed for file {uploaded_file.name}: {error_str}")
+                
+            except Exception as e:
+                # Handle unexpected errors
+                error_str = str(e)
+                user_message = "An unexpected error occurred during transcription."
+                
+                # Provide more context in logs but keep user message simple
+                st.error(f"Transcription failed: {user_message}")
+                st.session_state.processing_status = "error"
+                st.session_state.error_message = user_message
                 logging.error(f"Transcription failed for file {uploaded_file.name}: {error_str}", exc_info=True)
-                # Ensure cleanup happens on error too
-                try:
-                    if 'file_path' in locals() and os.path.exists(file_path): os.unlink(file_path)
-                except Exception as cleanup_e: logging.warning(f"Cleanup error (file_path): {cleanup_e}")
-                try:
-                    if 'chunk_paths' in locals():
-                         temp_dir_err = None
-                         for chunk_path in chunk_paths:
-                             if os.path.exists(chunk_path):
-                                 if not temp_dir_err: temp_dir_err = os.path.dirname(chunk_path)
-                                 os.unlink(chunk_path)
-                         if temp_dir_err and os.path.exists(temp_dir_err) and not os.listdir(temp_dir_err):
-                              os.rmdir(temp_dir_err)
-                except Exception as cleanup_e: logging.warning(f"Cleanup error (chunks): {cleanup_e}")
-                st.rerun() # Rerun to show the error message state
+                
+            finally:
+                # Cleanup temp resources in finally block to ensure it always happens
+                
+                # 1. Clean up chunk files
+                if chunk_paths:
+                    logging.info(f"Cleaning up {len(chunk_paths)} chunk files in finally block...")
+                    temp_dir = None
+                    for chunk_path in chunk_paths:
+                        if os.path.exists(chunk_path):
+                            try:
+                                os.unlink(chunk_path)
+                                if not temp_dir:
+                                    temp_dir = os.path.dirname(chunk_path)
+                            except Exception as cleanup_e:
+                                logging.warning(f"Failed to clean up chunk file: {str(cleanup_e)}")
+                    
+                    # Clean up temp directory if it exists and is empty
+                    if temp_dir and os.path.exists(temp_dir):
+                        try:
+                            if not os.listdir(temp_dir):
+                                os.rmdir(temp_dir)
+                                logging.info(f"Cleaned up temporary directory: {temp_dir}")
+                        except Exception as rmdir_e:
+                            logging.warning(f"Failed to remove temporary directory: {str(rmdir_e)}")
+                
+                # 2. Clean up main temporary file
+                if file_path and os.path.exists(file_path):
+                    try:
+                        os.unlink(file_path)
+                        logging.info(f"Cleaned up temporary file: {file_path}")
+                    except Exception as file_e:
+                        logging.warning(f"Failed to clean up temporary file: {str(file_e)}")
+                
+                # Rerun to update UI if we had an error
+                if st.session_state.processing_status == "error":
+                    st.rerun()
 
     # --- Display Results Section --- 
     # Check if status is 'complete' AND the filename matches the one processed AND transcript exists

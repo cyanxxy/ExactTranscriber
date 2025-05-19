@@ -19,3 +19,7 @@ numpy==1.24.3
 # Specify exact Python version for consistency
 # This matches what's in render.yaml
 # python_version=3.11.11
+
+# Testing
+pytest==8.2.2
+pytest-mock==3.14.0

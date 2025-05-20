@@ -12,3 +12,8 @@ dependencies = [
     "numpy>=1.24.0",
     "protobuf>=4.25.1",
 ]
+
+authors = [{ name = "Mansour Damanpak", email = "50705400+cyanxxy@users.noreply.github.com" }]
+license = { text = "MIT" }
+readme = "README.md"
+keywords = ["transcription", "streamlit", "audio", "gemini"]

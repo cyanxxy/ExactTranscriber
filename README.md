@@ -83,6 +83,7 @@ Follow these steps to get ExactTranscriber running on your local machine:
         # For password protection (optional)
         APP_PASSWORD = "your_secure_password"
         ```
+        Make sure this `secrets.toml` file is *not* committed to version control. The `.gitignore` file already excludes it so your credentials remain private.
 
 6.  **Run the Application:**
     ```bash
@@ -107,3 +108,13 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ## Contributing
 
 Contributions are welcome! If you'd like to help improve ExactTranscriber, please see our [CONTRIBUTING.md](CONTRIBUTING.md) guide for more information on how to get started, report bugs, or suggest new features.
+
+## Running Tests
+
+To run the unit test suite, install dependencies and execute `pytest`:
+
+```bash
+pip install -r requirements.txt
+pytest
+```
+

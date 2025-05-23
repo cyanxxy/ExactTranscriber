@@ -118,3 +118,7 @@ pip install -r requirements.txt
 pytest
 ```
 
+## Additional Documentation
+
+For a deeper look at the project, refer to the [ExactTranscriber Deepwiki page](https://deepwiki.com/cyanxxy/ExactTranscriber).
+

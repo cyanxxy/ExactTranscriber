@@ -13,12 +13,13 @@ LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 # --------- API Configuration ---------
 # Supported Gemini model IDs
 GEMINI_MODELS = {
-    "Gemini 2.0 Flash": "gemini-2.0-flash",
-    "Gemini 2.5 Flash": "gemini-2.5-flash-preview-04-17"
+    "Gemini 2.0 Flash": "gemini-2.0-flash-exp",
+    "Gemini 1.5 Pro": "gemini-1.5-pro",
+    "Gemini 1.5 Flash": "gemini-1.5-flash"
 }
 
 # Default model to use
-DEFAULT_MODEL = "Gemini 2.5 Flash"
+DEFAULT_MODEL = "Gemini 1.5 Flash"
 
 # --------- File Processing Configuration ---------
 # MIME type mapping for audio formats
@@ -33,8 +34,8 @@ MIME_TYPE_MAPPING = {
 # Allowed audio file extensions
 ALLOWED_AUDIO_TYPES = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/x-wav']
 
-# Maximum file size in bytes (500 MB)
-MAX_FILE_SIZE = 500 * 1024 * 1024
+# Maximum file size in bytes (200 MB - Streamlit limit)
+MAX_FILE_SIZE = 200 * 1024 * 1024
 
 # File size threshold for chunking (20 MB)
 CHUNK_THRESHOLD_MB = 20
@@ -71,3 +72,11 @@ EXPORT_FORMATS = {
 # --------- Content Context Options ---------
 CONTENT_TYPES = ["Podcast", "Interview", "Meeting", "Presentation", "Other"]
 LANGUAGES = ["English", "Spanish", "French", "German", "Other"]
+
+# --------- SRT Export Configuration ---------
+# Default subtitle duration in seconds for SRT export
+DEFAULT_SUBTITLE_DURATION_SECONDS = 3
+
+# --------- Validation Configuration ---------
+# Valid export formats
+VALID_EXPORT_FORMATS = ['txt', 'srt', 'json']

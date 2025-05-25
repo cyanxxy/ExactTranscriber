@@ -23,63 +23,73 @@ def mock_os_environ(mocker):
 
 @pytest.fixture
 def mock_genai_client(mocker):
-    """Fixture to mock google.genai.Client."""
-    mock_client_constructor = mocker.patch('api_client.genai.Client')
+    """Fixture to mock google.generativeai configuration and models."""
+    # Mock the configure function
+    mocker.patch('api_client.genai.configure')
+    
+    # Mock the GeminiClient class that we create
     mock_client_instance = MagicMock()
-    mock_client_constructor.return_value = mock_client_instance
-    return mock_client_instance, mock_client_constructor
+    mock_client_instance.models = mock_client_instance
+    mock_client_instance.files = mock_client_instance
+    
+    # Return the mock instance
+    return mock_client_instance, None
 
 # Tests for initialize_gemini
-def test_initialize_gemini_st_secrets_google_api_key(mock_st_secrets, mock_genai_client, mock_os_environ):
+def test_initialize_gemini_st_secrets_google_api_key(mock_st_secrets, mock_genai_client, mock_os_environ, mocker):
     mock_st_secrets.GOOGLE_API_KEY = "streamlit_google_key"
+    mock_configure = mocker.patch('api_client.genai.configure')
+    
     client, error, model_id = initialize_gemini()
     assert client is not None
     assert error is None
     assert model_id == GEMINI_MODELS[DEFAULT_MODEL]
-    mock_genai_client[1].assert_called_once_with(api_key="streamlit_google_key")
+    mock_configure.assert_called_once_with(api_key="streamlit_google_key")
 
-def test_initialize_gemini_st_secrets_gemini_api_key(mock_st_secrets, mock_genai_client, mock_os_environ):
+def test_initialize_gemini_st_secrets_gemini_api_key(mock_st_secrets, mock_genai_client, mock_os_environ, mocker):
     # Make GOOGLE_API_KEY unavailable in st.secrets
-    mock_st_secrets.get = lambda key, default=None: None # More robust mocking for attribute access
+    mock_st_secrets.get = lambda key, default=None: None
     mock_st_secrets.secrets = {"GEMINI_API_KEY": "streamlit_gemini_key"}
-    # Ensure GOOGLE_API_KEY is not directly an attribute
     if hasattr(mock_st_secrets, 'GOOGLE_API_KEY'):
         del mock_st_secrets.GOOGLE_API_KEY
-
+    
+    mock_configure = mocker.patch('api_client.genai.configure')
+    
     client, error, model_id = initialize_gemini()
     assert client is not None
     assert error is None
     assert model_id == GEMINI_MODELS[DEFAULT_MODEL]
-    mock_genai_client[1].assert_called_once_with(api_key="streamlit_gemini_key")
+    mock_configure.assert_called_once_with(api_key="streamlit_gemini_key")
 
 
-def test_initialize_gemini_os_environ_google_api_key(mock_os_environ, mock_genai_client, mock_st_secrets):
+def test_initialize_gemini_os_environ_google_api_key(mock_os_environ, mock_genai_client, mock_st_secrets, mocker):
     mock_os_environ["GOOGLE_API_KEY"] = "env_google_key"
-    # Ensure st.secrets doesn't have the keys
     mock_st_secrets.get = lambda key, default=None: None
     if hasattr(mock_st_secrets, 'GOOGLE_API_KEY'): del mock_st_secrets.GOOGLE_API_KEY
     if hasattr(mock_st_secrets, 'secrets'): del mock_st_secrets.secrets
-
-
+    
+    mock_configure = mocker.patch('api_client.genai.configure')
+    
     client, error, model_id = initialize_gemini()
     assert client is not None
     assert error is None
     assert model_id == GEMINI_MODELS[DEFAULT_MODEL]
-    mock_genai_client[1].assert_called_once_with(api_key="env_google_key")
+    mock_configure.assert_called_once_with(api_key="env_google_key")
 
-def test_initialize_gemini_os_environ_gemini_api_key(mock_os_environ, mock_genai_client, mock_st_secrets):
+def test_initialize_gemini_os_environ_gemini_api_key(mock_os_environ, mock_genai_client, mock_st_secrets, mocker):
     mock_os_environ["GEMINI_API_KEY"] = "env_gemini_key"
-    # Ensure st.secrets doesn't have the keys and GOOGLE_API_KEY is not in environ
     mock_st_secrets.get = lambda key, default=None: None
     if hasattr(mock_st_secrets, 'GOOGLE_API_KEY'): del mock_st_secrets.GOOGLE_API_KEY
     if hasattr(mock_st_secrets, 'secrets'): del mock_st_secrets.secrets
     if "GOOGLE_API_KEY" in mock_os_environ: del mock_os_environ["GOOGLE_API_KEY"]
-
+    
+    mock_configure = mocker.patch('api_client.genai.configure')
+    
     client, error, model_id = initialize_gemini()
     assert client is not None
     assert error is None
     assert model_id == GEMINI_MODELS[DEFAULT_MODEL]
-    mock_genai_client[1].assert_called_once_with(api_key="env_gemini_key")
+    mock_configure.assert_called_once_with(api_key="env_gemini_key")
 
 def test_initialize_gemini_no_api_key(mock_os_environ, mock_st_secrets, mock_genai_client):
     # Ensure no keys are found anywhere
@@ -93,11 +103,11 @@ def test_initialize_gemini_no_api_key(mock_os_environ, mock_st_secrets, mock_gen
     assert client is None
     assert "API key not found" in error
     assert model_id is None
-    mock_genai_client[1].assert_not_called()
 
-def test_initialize_gemini_client_init_exception(mock_st_secrets, mock_genai_client, mock_os_environ):
+def test_initialize_gemini_client_init_exception(mock_st_secrets, mock_genai_client, mock_os_environ, mocker):
     mock_st_secrets.GOOGLE_API_KEY = "some_key"
-    mock_genai_client[1].side_effect = Exception("GenAI client failed")
+    mock_configure = mocker.patch('api_client.genai.configure', side_effect=Exception("GenAI client failed"))
+    
     client, error, model_id = initialize_gemini()
     assert client is None
     assert "Failed to initialize Gemini client" in error
@@ -105,7 +115,8 @@ def test_initialize_gemini_client_init_exception(mock_st_secrets, mock_genai_cli
 
 def test_initialize_gemini_invalid_model_name(mock_st_secrets, mock_genai_client, mock_os_environ, mocker):
     mock_st_secrets.GOOGLE_API_KEY = "some_key"
-    mocker.patch('api_client.st.warning') # Mock streamlit warning
+    mock_warning = mocker.patch('api_client.st.warning')
+    mock_configure = mocker.patch('api_client.genai.configure')
     
     # Test with a model name not in GEMINI_MODELS (values)
     invalid_model_name = "gemini-invalid-model"
@@ -115,20 +126,22 @@ def test_initialize_gemini_invalid_model_name(mock_st_secrets, mock_genai_client
     assert error is None
     # Should fall back to the default model ID
     assert model_id == GEMINI_MODELS[DEFAULT_MODEL]
-    mock_genai_client[1].assert_called_once_with(api_key="some_key")
-    # api_client.st.warning.assert_called_once() # Check if warning was shown
+    mock_configure.assert_called_once_with(api_key="some_key")
+    mock_warning.assert_called_once()
 
-def test_initialize_gemini_specific_valid_model_name(mock_st_secrets, mock_genai_client, mock_os_environ):
+def test_initialize_gemini_specific_valid_model_name(mock_st_secrets, mock_genai_client, mock_os_environ, mocker):
     mock_st_secrets.GOOGLE_API_KEY = "some_key"
+    mock_configure = mocker.patch('api_client.genai.configure')
     
-    # Pick a specific model from config (assuming there's more than one)
-    specific_model_key = list(GEMINI_MODELS.keys())[0] # e.g., "Gemini 2.0 Flash"
+    # Pick a specific model from config
+    specific_model_key = list(GEMINI_MODELS.keys())[0]
     specific_model_id = GEMINI_MODELS[specific_model_key]
     
     client, error, model_id = initialize_gemini(model_name=specific_model_id)
     assert client is not None
     assert error is None
     assert model_id == specific_model_id
+    mock_configure.assert_called_once_with(api_key="some_key")
 
 # Tests for get_transcription_prompt
 def test_get_transcription_prompt_returns_template():

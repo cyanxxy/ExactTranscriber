@@ -1,43 +1,28 @@
 import streamlit as st
-import tempfile
-import os
-import json
-import re
-import concurrent.futures
-from streamlit_ace import st_ace
-from google import genai
-from google.genai import types as genai_types
+import logging
+from typing import Optional
 
 # Import from new module structure
-from config import (
-    MIME_TYPE_MAPPING, 
-    CHUNK_DURATION_MS
+from api_client import initialize_gemini
+from ui_components import (
+    render_model_selection,
+    render_context_inputs,
+    render_file_upload,
+    render_transcript_tabs,
+    render_footer
 )
-from api_client import (
-    initialize_gemini,
-    get_transcription_prompt
-)
-from file_utils import (
-    validate_audio_file,
-    chunk_audio_file
-)
-from transcript_utils import (
-    adjust_chunk_timestamps,
-    combine_transcriptions,
-    format_transcript_for_export
-)
-from styles import apply_custom_styles, format_transcript_line
+from transcription_processor import process_transcription_task
+from styles import apply_custom_styles
 from app_setup import setup_logging, setup_streamlit_page
-
-import logging # Added logging import
+from state_manager import initialize_state
 
 # Initialize logging
 setup_logging()
+logger = logging.getLogger(__name__)
 
-# --- Simple Password Authentication ---
-def check_password():
+
+def check_password() -> bool:
     """Returns `True` if the user had the correct password."""
-
     # Initialize password_correct in session state if it doesn't exist
     if "password_correct" not in st.session_state:
         st.session_state["password_correct"] = False
@@ -45,13 +30,15 @@ def check_password():
     # Only show input if password is not correct
     if not st.session_state["password_correct"]:
         # Center the login form with some styling
-        st.markdown("<h3 style='text-align: center; margin-bottom: 20px;'>Audio Transcription</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; margin-bottom: 20px;'>Audio Transcription</h3>", 
+                   unsafe_allow_html=True)
         
         # Create a centered container for the login form
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.markdown("<div class='styled-container'>", unsafe_allow_html=True) # Use CSS class
-            st.markdown("<h4 style='text-align: center; margin-bottom: 15px;'>Login</h4>", unsafe_allow_html=True)
+            st.markdown("<div class='styled-container'>", unsafe_allow_html=True)
+            st.markdown("<h4 style='text-align: center; margin-bottom: 15px;'>Login</h4>", 
+                       unsafe_allow_html=True)
             
             # Password input field
             password = st.text_input("Password", type="password", key="password")
@@ -61,522 +48,162 @@ def check_password():
                 # Check password
                 if "app_password" in st.secrets and password == st.secrets["app_password"]:
                     st.session_state["password_correct"] = True
-                    st.rerun() # Use the current standard function
+                    st.rerun()
                 else:
                     st.error("😕 Password incorrect")
             
             st.markdown("</div>", unsafe_allow_html=True)
         
-        return False # Return False to block app execution
+        return False
     else:
-        # Password correct
         return True
 
+
+def handle_transcription_processing(uploaded_file, client, model_name: str) -> None:
+    """Handle the transcription processing workflow."""
+    # Get metadata from session state
+    metadata = {
+        "content_type": st.session_state.content_type_select.lower() 
+                        if st.session_state.content_type_select != "Other" else None,
+        "topic": st.session_state.topic_input if st.session_state.topic_input else None,
+        "description": st.session_state.description_input if st.session_state.description_input else None,
+        "language": st.session_state.language_select 
+                    if st.session_state.language_select != "Other" else None
+    }
+    metadata = {k: v for k, v in metadata.items() if v is not None}
+    
+    num_speakers = st.session_state.num_speakers_input
+    
+    with st.spinner("Processing your audio file... This might take a while."):
+        try:
+            # Process transcription
+            result = process_transcription_task(
+                client, model_name, uploaded_file, metadata, num_speakers
+            )
+            
+            if result["success"]:
+                # Update session state with results
+                st.session_state.transcript_text = result["transcript"]
+                st.session_state.edited_transcript = result["transcript"]
+                st.session_state.transcript_editor_content = result["transcript"]
+                st.session_state.processing_status = "complete"
+                
+                logger.info(f"Transcription successful for file: {uploaded_file.name}")
+                st.rerun()
+            else:
+                # Handle error
+                handle_transcription_error(result["error"], uploaded_file.name)
+                
+        except Exception as e:
+            # Handle unexpected error
+            handle_transcription_error(str(e), uploaded_file.name, unexpected=True)
+
+
+def handle_transcription_error(error_message: str, filename: str, unexpected: bool = False) -> None:
+    """Handle transcription errors consistently."""
+    if unexpected:
+        user_message = "An unexpected error occurred during transcription."
+        logger.error(f"Unexpected transcription error for {filename}: {error_message}", exc_info=True)
+    else:
+        user_message = error_message
+        logger.error(f"Transcription failed for {filename}: {error_message}")
+    
+    st.error(f"Transcription failed: {user_message}")
+    st.session_state.processing_status = "error"
+    st.session_state.error_message = user_message
+    st.rerun()
+
+
 def main():
-    logging.info("Application started/restarted.")
-    # Use the centralized setup function instead of direct st.set_page_config
+    """Main application entry point."""
+    logger.info("Application started/restarted.")
+    
+    # Setup page configuration
     setup_streamlit_page()
-
-    # Apply custom styles after page config
     apply_custom_styles()
-
-    # --- Initialize Session State --- 
-    from state_manager import initialize_state
+    
+    # Initialize session state
     initialize_state()
-
-    logging.info(f"Initial state: processing_status={st.session_state.processing_status}, current_file_name={st.session_state.current_file_name}")
-
-    # --- Check Password --- 
+    
+    logger.info(f"Initial state: processing_status={st.session_state.processing_status}, "
+               f"current_file_name={st.session_state.current_file_name}")
+    
+    # Check password
     if not check_password():
-        st.stop() # Stop execution if password check fails
-
-    # --- Rest of your app code starts here ---
-
-    # Clean, minimal header (styling now primarily from styles.py)
+        st.stop()
+    
+    # Application header
     st.markdown("<h1>Audio Transcription</h1>", unsafe_allow_html=True)
-
-    # --- Model Selection --- 
-    # Store selection in session state for use during processing rerun
-    from config import GEMINI_MODELS as model_mapping
-    with st.container():
-        st.markdown("<div class='styled-container'>", unsafe_allow_html=True)
-        st.markdown("<h4 style='margin-bottom: 10px;'>Select Transcription Model</h4>", unsafe_allow_html=True)
-        
-        # Get available model options
-        model_options = list(model_mapping.keys())
-        
-        # Find default index (prefer Gemini 2.5 Flash if available)
-        default_model_name = "Gemini 2.5 Flash"
-        default_index = 0  # Fallback to first option
-        
-        if default_model_name in model_options:
-            default_index = model_options.index(default_model_name)
-        
-        # Use a key to access the widget's state
-        model_display = st.radio(
-            "Select transcription model", 
-            options=model_options,
-            index=default_index,
-            horizontal=True,
-            help="Choose between faster (Flash) or more accurate (Pro) transcription",
-            label_visibility="collapsed",
-            key="model_display_radio" # Add a key
-        )
-        # Store the actual model ID in session state
-        # Use get() with a default value to prevent KeyError
-        default_model = model_mapping.get("Gemini 2.5 Flash", "gemini-2.5-flash-preview-04-17")
-        st.session_state.selected_model_id = model_mapping.get(model_display, default_model)
-
-        # Display appropriate caption based on model type
-        if model_display and "Flash" in model_display:
-            st.caption("⚡ Optimized for speed, good for most transcriptions")
-        else:
-            st.caption("✨ Higher quality, better for complex audio or multiple speakers")
-        st.markdown("</div>", unsafe_allow_html=True)
-
+    
+    # Model selection
+    selected_model_id = render_model_selection()
     st.divider()
-
-    # --- Initialize Gemini Client --- 
-    # Initialize based on the selection stored in session state
-    client, error_message_init, model_name = initialize_gemini(st.session_state.selected_model_id)
+    
+    # Initialize Gemini client
+    client, error_message, model_name = initialize_gemini(selected_model_id)
     if not client:
-        st.error(error_message_init)
-        st.session_state.processing_status = "error" # Mark error state if init fails
-        st.session_state.error_message = error_message_init
-        logging.error(f"Failed to initialize Gemini client: {error_message_init}")
-        # Don't stop immediately, allow display of other elements or error message below
+        st.error(error_message)
+        st.session_state.processing_status = "error"
+        st.session_state.error_message = error_message
+        logger.error(f"Failed to initialize Gemini client: {error_message}")
     else:
         st.success(f"Gemini initialized with model: {model_name}")
-        logging.info(f"Gemini client initialized successfully with model: {model_name}")
-
-    # --- Optional Context --- 
-    # Store context in session state for use during processing rerun
-    with st.expander("Optional Context", expanded=False):
-        col1_ctx, col2_ctx = st.columns(2)
-        with col1_ctx:
-            st.session_state.content_type_select = st.selectbox(
-                "Type", options=["Podcast", "Interview", "Meeting", "Presentation", "Other"], index=0, key="ctx_type"
-            )
-            st.session_state.language_select = st.selectbox(
-                "Language", options=["English", "Spanish", "French", "German", "Other"], index=0, key="ctx_lang"
-            )
-        with col2_ctx:
-            st.session_state.topic_input = st.text_input("Topic", key="ctx_topic")
-            st.session_state.description_input = st.text_input("Description", key="ctx_desc")
-            st.session_state.num_speakers_input = st.number_input(
-                "Number of Speakers", min_value=1, value=1, step=1, 
-                help="Specify the total number of distinct speakers in the audio.", key="ctx_speakers"
-            )
+        logger.info(f"Gemini client initialized successfully with model: {model_name}")
+    
+    # Context inputs
+    metadata, num_speakers = render_context_inputs()
+    # Store in session state for processing
+    st.session_state.content_type_select = metadata.get("content_type", "").title() or "Other"
+    st.session_state.language_select = metadata.get("language", "").title() or "Other"
+    st.session_state.topic_input = metadata.get("topic", "")
+    st.session_state.description_input = metadata.get("description", "")
+    st.session_state.num_speakers_input = num_speakers
     
     st.divider()
-
-    # --- File Upload Section --- 
-    with st.container():
-        st.markdown("<div class='styled-container'>", unsafe_allow_html=True)
-        st.markdown("<h4 style='margin-bottom: 10px;'>Upload Your Audio File</h4>", unsafe_allow_html=True)
-        st.caption("Supported formats: MP3, WAV, OGG (max 200MB)")
-        
-        uploaded_file = st.file_uploader("Upload audio file", type=['mp3', 'wav', 'ogg'], key="file_uploader_widget")
-        
-        process_button = False
-        
-        if uploaded_file:
-            if not validate_audio_file(uploaded_file):
-                 # Validation error shown in validate_audio_file
-                 pass # Allow script to continue to potentially show other errors
-            else:
-                file_size_mb = uploaded_file.size / (1024 * 1024)
-                st.caption(f"File: {uploaded_file.name} ({file_size_mb:.1f} MB)")
-
-                # Display status/error related to this specific file
-                if st.session_state.current_file_name == uploaded_file.name:
-                    if st.session_state.processing_status == "processing":
-                        st.info("Transcription is already in progress...")
-                    elif st.session_state.processing_status == "error":
-                        st.error(f"Previous attempt failed: {st.session_state.error_message}")
-                
-                # Show transcribe button only if idle or error state for this file
-                if not (st.session_state.current_file_name == uploaded_file.name and \
-                        st.session_state.processing_status in ["processing", "complete"]):
-                    process_button = st.button("🎯 Transcribe", type="primary", key="transcribe_button")
-                
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-    # --- Transcription Logic Trigger --- 
-    # Trigger only if button pressed AND status allows processing for this file
-    if uploaded_file and process_button and \
-       not (st.session_state.current_file_name == uploaded_file.name and \
+    
+    # File upload
+    uploaded_file, process_button = render_file_upload()
+    
+    # Handle transcription trigger
+    if uploaded_file and process_button and client and \
+       not (st.session_state.current_file_name == uploaded_file.name and 
             st.session_state.processing_status in ["processing", "complete"]):
-
+        
+        # Update state
         st.session_state.processing_status = "processing"
         st.session_state.current_file_name = uploaded_file.name
-        st.session_state.transcript_text = None 
+        st.session_state.transcript_text = None
         st.session_state.edited_transcript = None
         st.session_state.error_message = None
-        st.session_state.transcript_editor_content = "" 
-        logging.info(f"Transcription started for file: {uploaded_file.name}")
-        st.rerun() # Rerun to display results now that status is 'complete'
-
-    # --- Display Results or Spinner --- 
-    # Check if processing status is 'processing' AND the filename matches the one being processed
-    if st.session_state.processing_status == "processing" and uploaded_file and st.session_state.current_file_name == uploaded_file.name:
+        st.session_state.transcript_editor_content = ""
         
-        with st.spinner("Processing your audio file... This might take a while."):
-            # Variables to track temporary resources for proper cleanup
-            file_path = None
-            chunk_paths = []
-            
-            try:
-                # --- Re-fetch necessary variables/context for processing --- 
-                # Get audio data safely (assuming file_uploader widget state persists)
-                audio_data = uploaded_file.getvalue()
-                
-                # Save uploaded file temporarily - essential for chunking
-                with tempfile.NamedTemporaryFile(delete=False, suffix=uploaded_file.name, mode='wb') as tmp_file:
-                    tmp_file.write(audio_data)
-                    file_path = tmp_file.name
-                    logging.info(f"Created temporary file for uploaded audio: {file_path}")
-                
-                try:
-                    os.chmod(file_path, 0o600)  # Read/write for owner only
-                except Exception as perm_err:
-                    logging.warning(f"Could not set permissions on temporary file: {str(perm_err)}")
-
-                # Get client (already initialized above, check if still valid)
-                if not client: # Re-check client status
-                    raise Exception(st.session_state.error_message or "Gemini client not initialized.")
-                
-                # Get context from session state
-                metadata = {
-                    "content_type": st.session_state.content_type_select.lower() if st.session_state.content_type_select != "Other" else None,
-                    "topic": st.session_state.topic_input if st.session_state.topic_input else None,
-                    "description": st.session_state.description_input if st.session_state.description_input else None,
-                    "language": st.session_state.language_select if st.session_state.language_select != "Other" else None
-                }
-                metadata = {k: v for k, v in metadata.items() if v is not None}
-                prompt_template = get_transcription_prompt(metadata)
-                prompt = prompt_template.render(num_speakers=st.session_state.num_speakers_input, metadata=metadata)
-                
-                file_format = uploaded_file.type.split('/')[-1]
-                if file_format == 'mpeg': file_format = 'mp3'
-                elif file_format == 'x-wav': file_format = 'wav'
-                file_size_mb = uploaded_file.size / (1024 * 1024)
-                large_file = file_size_mb > 20
-                # CHUNK_DURATION_MS is now imported from config.py
-
-                # --- Actual Processing --- 
-                if large_file:
-                    # Chunking 
-                    chunk_paths, num_chunks = chunk_audio_file(audio_data, file_format, chunk_duration_ms=CHUNK_DURATION_MS)
-                    if num_chunks == 0 or not chunk_paths:
-                        raise Exception("Failed to split audio file.") 
-
-                    all_transcriptions = []
-                    chunk_args = [(i, chunk_path) for i, chunk_path in enumerate(chunk_paths)]
-                    
-                    # Define the worker function INSIDE this block to capture necessary scope (client, model_name, prompt)
-                    def process_chunk_worker(args): 
-                        i, chunk_path = args
-                        try:
-                            mime_type = MIME_TYPE_MAPPING.get(file_format, f"audio/{file_format}")
-                            
-                            # API upload step - specific error handling
-                            try:
-                                chunk_file = client.files.upload(file=chunk_path, config={"mimeType": mime_type})
-                            except Exception as upload_err:
-                                logging.error(f"Failed to upload chunk {i+1} to Gemini API: {str(upload_err)}")
-                                if "unauthorized" in str(upload_err).lower() or "authentication" in str(upload_err).lower():
-                                    raise ValueError(f"API authentication error: {str(upload_err)}")
-                                if "quota" in str(upload_err).lower():
-                                    raise ValueError(f"API quota exceeded: {str(upload_err)}")
-                                raise ValueError(f"Chunk upload failed: {str(upload_err)}")
-                            
-                            # Transcription step - specific error handling
-                            try:
-                                chunk_response = client.models.generate_content(
-                                    model=model_name,
-                                    contents=[prompt, chunk_file],
-                                )
-                            except Exception as transcribe_err:
-                                logging.error(f"Failed to transcribe chunk {i+1}: {str(transcribe_err)}")
-                                raise ValueError(f"Transcription API error: {str(transcribe_err)}")
-                            
-                            # Extract transcript text
-                            try:
-                                chunk_text = chunk_response.text if hasattr(chunk_response, 'text') else chunk_response.candidates[0].content.parts[0].text
-                            except Exception as extract_err:
-                                logging.error(f"Failed to extract text from chunk {i+1} response: {str(extract_err)}")
-                                raise ValueError(f"Could not extract transcript text: {str(extract_err)}")
-                            
-                            # Adjust timestamps
-                            adjusted_transcription = adjust_chunk_timestamps(chunk_text, i, chunk_duration_ms=CHUNK_DURATION_MS)
-                            logging.info(f"Successfully processed chunk {i+1}/{num_chunks}")
-                            return adjusted_transcription
-                        except ValueError as ve:
-                            # Specific known errors already logged above
-                            return None
-                        except Exception as e:
-                            logging.error(f"Unexpected error processing chunk {i+1}: {str(e)}", exc_info=True)
-                            return None
-
-                    # Process chunks using the locally defined worker
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                        results = executor.map(process_chunk_worker, chunk_args) 
-                        all_transcriptions = [res for res in results if res is not None]
-
-                    # Combine or fallback if chunk errors
-                    if all_transcriptions and len(all_transcriptions) >= num_chunks * 0.8:
-                        combined_transcription = combine_transcriptions(all_transcriptions)
-                    else:
-                        st.info("Falling back to full audio transcription due to chunk errors.")
-                        # Upload full audio via Files API for fallback
-                        mime_type_full = MIME_TYPE_MAPPING.get(file_format, f"audio/{file_format}")
-                        full_file_part = client.files.upload(file=file_path, config={"mimeType": mime_type_full})
-                        full_resp = client.models.generate_content(
-                            model=model_name,
-                            contents=[prompt, full_file_part],
-                        )
-                        combined_transcription = (full_resp.text if hasattr(full_resp, 'text') 
-                                                 else full_resp.candidates[0].content.parts[0].text)
-
-                    # Store results in session state
-                    st.session_state.transcript_text = combined_transcription
-                    st.session_state.edited_transcript = combined_transcription
-                    st.session_state.transcript_editor_content = combined_transcription # Update editor base
-                    st.session_state.processing_status = "complete"
-
-                        # Cleanup chunks
-                    if chunk_paths:
-                        logging.info(f"Cleaning up {len(chunk_paths)} chunk files...")
-                        temp_dir = None
-                        for chunk_path in chunk_paths:
-                            if os.path.exists(chunk_path):
-                                try: 
-                                    os.unlink(chunk_path)
-                                    if not temp_dir:
-                                        temp_dir = os.path.dirname(chunk_path)
-                                except Exception as e: 
-                                    logging.warning(f"Failed to remove chunk file {chunk_path}: {str(e)}")
-                        
-                        # Try to remove the temp directory if it exists and is empty
-                        if temp_dir and os.path.exists(temp_dir):
-                            try:
-                                if not os.listdir(temp_dir): 
-                                    os.rmdir(temp_dir)
-                                    logging.info(f"Removed temporary directory: {temp_dir}")
-                            except Exception as e:
-                                logging.warning(f"Failed to remove temp directory {temp_dir}: {str(e)}")
-
-                else: # Small file processing
-                    mime_type = MIME_TYPE_MAPPING.get(file_format, f"audio/{file_format}")
-                    try:
-                        file_obj = client.files.upload(file=file_path, config={"mimeType": mime_type})
-                    except Exception as upload_err:
-                        logging.error(f"Failed to upload audio file to Gemini API: {str(upload_err)}")
-                        if "unauthorized" in str(upload_err).lower():
-                            raise ValueError("API authentication error. Please check your API key.")
-                        elif "quota" in str(upload_err).lower():
-                            raise ValueError("API quota exceeded. Please try again later.")
-                        else:
-                            raise ValueError(f"File upload failed: {str(upload_err)}")
-                            
-                    try:
-                        response = client.models.generate_content(
-                            model=model_name,
-                            contents=[prompt, file_obj]
-                        )
-                        
-                        response_text = response.text if hasattr(response, 'text') else response.candidates[0].content.parts[0].text
-                        st.session_state.transcript_text = response_text
-                        st.session_state.edited_transcript = response_text 
-                        st.session_state.transcript_editor_content = response_text # Update editor base
-                        st.session_state.processing_status = "complete"
-                    except Exception as transcribe_err:
-                        logging.error(f"Transcription API error: {str(transcribe_err)}")
-                        raise ValueError(f"Transcription failed: {str(transcribe_err)}")
-
-                # Cleanup original temp file (always do this after processing)
-                if file_path and os.path.exists(file_path):
-                    try: 
-                        os.unlink(file_path)
-                        logging.info(f"Removed temporary file: {file_path}")
-                    except Exception as e: 
-                        logging.warning(f"Failed to remove temporary file {file_path}: {str(e)}")
-
-                logging.info(f"Transcription successful for file: {uploaded_file.name}")
-                st.rerun() # Rerun to display results now that status is 'complete'
-
-            except ValueError as ve:
-                # Handle known error types with user-friendly messages
-                error_str = str(ve)
-                user_message = error_str
-                
-                # Update application state
-                st.error(f"Transcription failed: {user_message}")
-                st.session_state.processing_status = "error"
-                st.session_state.error_message = user_message
-                logging.error(f"Transcription failed for file {uploaded_file.name}: {error_str}")
-                
-            except Exception as e:
-                # Handle unexpected errors
-                error_str = str(e)
-                user_message = "An unexpected error occurred during transcription."
-                
-                # Provide more context in logs but keep user message simple
-                st.error(f"Transcription failed: {user_message}")
-                st.session_state.processing_status = "error"
-                st.session_state.error_message = user_message
-                logging.error(f"Transcription failed for file {uploaded_file.name}: {error_str}", exc_info=True)
-                
-            finally:
-                # Cleanup temp resources in finally block to ensure it always happens
-                
-                # 1. Clean up chunk files
-                if chunk_paths:
-                    logging.info(f"Cleaning up {len(chunk_paths)} chunk files in finally block...")
-                    temp_dir = None
-                    for chunk_path in chunk_paths:
-                        if os.path.exists(chunk_path):
-                            try:
-                                os.unlink(chunk_path)
-                                if not temp_dir:
-                                    temp_dir = os.path.dirname(chunk_path)
-                            except Exception as cleanup_e:
-                                logging.warning(f"Failed to clean up chunk file: {str(cleanup_e)}")
-                    
-                    # Clean up temp directory if it exists and is empty
-                    if temp_dir and os.path.exists(temp_dir):
-                        try:
-                            if not os.listdir(temp_dir):
-                                os.rmdir(temp_dir)
-                                logging.info(f"Cleaned up temporary directory: {temp_dir}")
-                        except Exception as rmdir_e:
-                            logging.warning(f"Failed to remove temporary directory: {str(rmdir_e)}")
-                
-                # 2. Clean up main temporary file
-                if file_path and os.path.exists(file_path):
-                    try:
-                        os.unlink(file_path)
-                        logging.info(f"Cleaned up temporary file: {file_path}")
-                    except Exception as file_e:
-                        logging.warning(f"Failed to clean up temporary file: {str(file_e)}")
-                
-                # Rerun to update UI if we had an error
-                if st.session_state.processing_status == "error":
-                    st.rerun()
-
-    # --- Display Results Section --- 
-    # Check if status is 'complete' AND the filename matches the one processed AND transcript exists
-    elif st.session_state.processing_status == "complete" and \
-         uploaded_file and st.session_state.current_file_name == uploaded_file.name and \
+        logger.info(f"Transcription started for file: {uploaded_file.name}")
+        st.rerun()
+    
+    # Handle processing state
+    if st.session_state.processing_status == "processing" and uploaded_file and \
+       st.session_state.current_file_name == uploaded_file.name:
+        handle_transcription_processing(uploaded_file, client, model_name)
+    
+    # Display results
+    elif st.session_state.processing_status == "complete" and uploaded_file and \
+         st.session_state.current_file_name == uploaded_file.name and \
          st.session_state.transcript_text is not None:
-
-        st.success("Transcription finished!")
-        logging.info(f"Displaying results for file: {uploaded_file.name}")
-        # --- Display Tabs (Transcript, Edit, Export) --- 
-        tabs = st.tabs(["Transcript", "Edit", "Export"])
         
-        with tabs[0]:
-            # Display formatted st.session_state.transcript_text
-            st.markdown("### Transcript")
-            with st.container():
-                 st.markdown("<div class='styled-container transcript-container'>", unsafe_allow_html=True)
-                 formatted_lines = []
-                 transcript_content = st.session_state.get("transcript_text", "")
-                 for line in transcript_content.split('\n'):
-                     if line.strip():
-                         formatted_lines.append(format_transcript_line(line))
-                 formatted_transcript = '<p>' + '</p><p>'.join(formatted_lines) + '</p>'
-                 st.markdown(formatted_transcript, unsafe_allow_html=True)
-                 st.markdown("</div>", unsafe_allow_html=True)
-
-        with tabs[1]:
-            # Display editor using st.session_state.edited_transcript or transcript_text
-            st.markdown("### Edit Transcript")
-            
-            # Use dedicated editor state. If it's empty (e.g. after error or first load), 
-            # initialize it from edited_transcript or transcript_text
-            if not st.session_state.transcript_editor_content:
-                 st.session_state.transcript_editor_content = st.session_state.get("edited_transcript", st.session_state.get("transcript_text", ""))
-
-            edited_text = st_ace(
-                value=st.session_state.transcript_editor_content, 
-                language='text',
-                theme='tomorrow_night',
-                keybinding='vscode',
-                font_size=14,
-                tab_size=4,
-                show_gutter=True,
-                show_print_margin=False,
-                wrap=True,
-                auto_update=False, # Use manual save
-                readonly=False,
-                height=400,
-                key="transcript_editor_widget" 
-            )
-            # Add explicit save button
-            if st.button("Save Edits", key="save_edits_button"):
-                st.session_state.edited_transcript = edited_text 
-                st.session_state.transcript_editor_content = edited_text 
-                logging.info(f"User saved edits for file: {uploaded_file.name}")
-                st.success("Edits saved!")
-                # No rerun needed normally, state is saved
-
-        with tabs[2]:
-            # Export logic using st.session_state.edited_transcript
-            st.markdown("### Export Transcript")
-            with st.container():
-                st.markdown("<div class='styled-container'>", unsafe_allow_html=True)
-                st.markdown("Choose a format and download your transcript:")
-                col1_exp, col2_exp = st.columns([3, 2])
-                with col1_exp:
-                    export_format = st.selectbox(
-                        "Export Format", options=["TXT", "SRT", "JSON"], index=0,
-                        help="TXT: Plain text | SRT: Subtitles | JSON: Data format", key="export_format_select"
-                    )
-                    format_descriptions = {
-                        "TXT": "Simple text format...", "SRT": "Subtitle format...", "JSON": "Structured data..."
-                    }
-                    st.caption(format_descriptions[export_format])
-
-                format_map = {"TXT": "txt", "SRT": "srt", "JSON": "json"}
-                mime_map = {"TXT": "text/plain", "SRT": "application/x-subrip", "JSON": "application/json"}
-                format_key = format_map[export_format]
-                mime_type = mime_map[export_format]
-
-                # Always use latest editor content if available
-                export_content = st.session_state.get("transcript_editor_content", st.session_state.get("edited_transcript", st.session_state.get("transcript_text", "")))
-                formatted_content = format_transcript_for_export(export_content, format=format_key)
-                base_filename = os.path.splitext(st.session_state.current_file_name)[0]
-                export_filename = f"{base_filename}_transcript.{format_key}"
-
-                # Warn if edits are not saved
-                unsaved_edits = (
-                    st.session_state.get("transcript_editor_content", "") != st.session_state.get("edited_transcript", "")
-                )
-                if unsaved_edits:
-                    st.warning("You have unsaved edits. Please click 'Save Edits' before exporting to include your latest changes.")
-
-                with st.expander("Preview Export"):
-                    st.text(formatted_content[:500] + ("..." if len(formatted_content) > 500 else ""))
-                with col2_exp:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    st.download_button(
-                        label=f"📥 Download {export_format.upper()}", data=formatted_content,
-                        file_name=export_filename, mime=mime_type, type="primary",
-                        use_container_width=True, key=f"download_button_{export_format}"
-                    )
-                st.markdown("</div>", unsafe_allow_html=True)
-
-    # Handle case where an error occurred but no file is currently uploaded (e.g., Gemini init failed)
+        st.success("Transcription finished!")
+        logger.info(f"Displaying results for file: {uploaded_file.name}")
+        render_transcript_tabs(st.session_state.transcript_text, uploaded_file.name)
+    
+    # Handle error state without file
     elif st.session_state.processing_status == "error" and not uploaded_file:
-         st.error(f"An error occurred: {st.session_state.error_message}")
-         logging.error(f"Error occurred without file upload: {st.session_state.error_message}")
-
+        st.error(f"An error occurred: {st.session_state.error_message}")
+        logger.error(f"Error occurred without file upload: {st.session_state.error_message}")
+    
     # Footer
-    st.markdown("<div style='text-align: center; color: #888; font-size: 0.8em; margin-top: 50px;'><a href='https://www.linkedin.com/in/mansour-damanpak/' target='_blank' style='color: #1E88E5; text-decoration: none;'>Developed by Mansour Damanpak</a></div>", unsafe_allow_html=True)
+    render_footer()
+    
+    logger.info("Application main function finished execution for this run.")
 
-    logging.info("Application main function finished execution for this run.")
 
 if __name__ == "__main__":
     main()

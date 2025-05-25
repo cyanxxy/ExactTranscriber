@@ -8,9 +8,18 @@ dependencies = [
     "jinja2>=3.1.6",
     "pydub>=0.25.1",
     "streamlit>=1.32",
-    "streamlit_ace>=0.1.1",
+    "streamlit-ace>=0.1.1",
     "numpy>=1.24.0",
     "protobuf>=4.25.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.2",
+    "pytest-mock>=3.14.0",
+    "ruff>=0.1.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
 ]
 
 authors = [{ name = "Mansour Damanpak", email = "50705400+cyanxxy@users.noreply.github.com" }]

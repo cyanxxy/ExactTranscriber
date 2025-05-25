@@ -7,7 +7,7 @@ import logging
 from typing import Tuple, Dict, Any, Optional, List
 
 import streamlit as st
-from google import genai
+import google.generativeai as genai
 from jinja2 import Template
 
 from config import GEMINI_MODELS, DEFAULT_MODEL
@@ -67,8 +67,24 @@ def initialize_gemini(model_name: Optional[str] = None) -> Tuple[Any, Optional[s
         return None, error_message, None
 
     try:
-        # Create the client with the API key
-        client = genai.Client(api_key=api_key)
+        # Configure the API key
+        genai.configure(api_key=api_key)
+        
+        # Create a dummy client object for compatibility
+        # In the new API, we don't need a client object
+        class GeminiClient:
+            def __init__(self):
+                self.models = self
+                self.files = self
+            
+            def generate_content(self, model, contents):
+                model_obj = genai.GenerativeModel(model)
+                return model_obj.generate_content(contents)
+            
+            def upload(self, file, config):
+                return genai.upload_file(file, mime_type=config.get("mimeType"))
+        
+        client = GeminiClient()
         
         # Validate model name against common models
         valid_models = list(GEMINI_MODELS.values())
@@ -95,7 +111,12 @@ def initialize_gemini(model_name: Optional[str] = None) -> Tuple[Any, Optional[s
             
         # Clean up potentially sensitive info from error
         if api_key and api_key in error_message:
-            error_message = "Failed to initialize Gemini due to an API key or configuration issue."
+            error_message = error_message.replace(api_key, "[REDACTED]")
+        
+        # Additional sanitization for common API key patterns
+        import re
+        # Remove potential API keys (long alphanumeric strings)
+        error_message = re.sub(r'\b[A-Za-z0-9]{32,}\b', '[REDACTED]', error_message)
             
         logging.error(f"Gemini initialization error: {error_message}")
         return None, error_message, None

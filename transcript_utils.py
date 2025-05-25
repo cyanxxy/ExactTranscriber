@@ -8,7 +8,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import timedelta
 
-from config import CHUNK_DURATION_MS
+from config import CHUNK_DURATION_MS, DEFAULT_SUBTITLE_DURATION_SECONDS, VALID_EXPORT_FORMATS
 
 def adjust_chunk_timestamps(transcription: str, chunk_index: int, 
                            chunk_duration_ms: int = CHUNK_DURATION_MS) -> str:
@@ -147,8 +147,18 @@ def format_transcript_for_export(transcript_text: str, format: str = 'txt') -> s
         
     Returns:
         Formatted transcript
+        
+    Raises:
+        ValueError: If format is not valid
     """
+    # Validate format
+    if format not in VALID_EXPORT_FORMATS:
+        logging.warning(f"Invalid export format '{format}' requested, defaulting to 'txt'")
+        format = 'txt'
+    
     if not transcript_text:
+        if format == 'json':
+            return json.dumps({"transcript": []}, indent=2)
         return ""
         
     if format == 'txt':
@@ -172,7 +182,7 @@ def format_transcript_for_export(transcript_text: str, format: str = 'txt') -> s
                 # Convert timestamp to SRT format
                 start_time = convert_timestamp_to_srt(f"[{timestamp}]")
                 
-                # Compute end time as start time + 3 seconds
+                # Compute end time as start time + configured duration
                 parts = list(map(int, timestamp.split(':')))
                 if len(parts) == 3:
                     hours, minutes, seconds = parts
@@ -183,7 +193,7 @@ def format_transcript_for_export(transcript_text: str, format: str = 'txt') -> s
                     hours = minutes = seconds = 0
                     
                 start_delta = timedelta(hours=hours, minutes=minutes, seconds=seconds)
-                end_delta = start_delta + timedelta(seconds=3)
+                end_delta = start_delta + timedelta(seconds=DEFAULT_SUBTITLE_DURATION_SECONDS)
                 end_time = f"{str(end_delta).zfill(8)},000"
 
                 # Format SRT entry

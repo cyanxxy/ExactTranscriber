@@ -3,8 +3,8 @@ streamlit==1.32.0
 pydub==0.25.1
 streamlit_ace==0.1.1
 
-# Google Gemini API
-google-generativeai==0.8.4
+# Google Gemini API (latest version)
+google-generativeai>=0.8.4
 
 # Supporting libraries
 Jinja2==3.1.6

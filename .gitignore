@@ -122,7 +122,7 @@ dmypy.json
 # Static analysis tool configs
 .flake8
 .pylintrc
-pyproject.toml # Often includes tool configurations
+.ruff_cache/
 
 # IDE settings / metadata
 .idea/
@@ -142,3 +142,27 @@ secrets.yml
 .streamlit/secrets.toml
 
 **/.claude/settings.local.json
+
+# Backup files
+*.bak
+*_backup.*
+*_original.*
+*_refactored.*
+
+# Audio test files
+test_audio/
+*.mp3
+*.wav
+*.ogg
+*.m4a
+*.flac
+
+# Logs
+logs/
+transcriber_app.log
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/

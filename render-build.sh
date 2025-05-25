@@ -24,7 +24,7 @@ echo "-----> Python dependencies installation attempt complete."
 echo "-----> Checking google-generativeai installation..."
 pip show google-generativeai
 
-echo "-----> Attempting to import genai in build script..."
-python -c "from google import genai; print('SUCCESS: genai imported correctly in build script')" || echo "FAILURE: genai import failed in build script"
+echo "-----> Attempting to import google.generativeai in build script..."
+python -c "import google.generativeai as genai; print('SUCCESS: google.generativeai imported correctly in build script')" || echo "FAILURE: google.generativeai import failed in build script"
 
 echo "-----> Build process finished."

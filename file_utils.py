@@ -55,18 +55,28 @@ def create_temp_file(audio_data: bytes, filename: str) -> Tuple[str, bool]:
         Tuple of (file_path, success)
     """
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=filename, mode='wb') as tmp_file:
-            tmp_file.write(audio_data)
-            file_path = tmp_file.name
-            logging.info(f"Created temporary file: {file_path}")
-        
+        # Create temp file with secure permissions from the start
+        fd, file_path = tempfile.mkstemp(suffix=filename)
         try:
+            # Set secure permissions immediately
             os.chmod(file_path, 0o600)  # Read/write for owner only
-        except Exception as e:
-            logging.warning(f"Could not set permissions on temporary file: {e}")
             
-        return file_path, True
-        
+            # Write data using the file descriptor
+            with os.fdopen(fd, 'wb') as tmp_file:
+                tmp_file.write(audio_data)
+            
+            logging.info(f"Created secure temporary file: {file_path}")
+            return file_path, True
+            
+        except Exception as e:
+            # Clean up the file if writing failed
+            try:
+                os.close(fd)
+            except:
+                pass
+            cleanup_file(file_path)
+            raise
+            
     except Exception as e:
         logging.error(f"Failed to create temporary file: {e}")
         return None, False
@@ -145,15 +155,17 @@ def chunk_audio_file(audio_data: bytes, file_format: str,
         num_chunks = (total_duration // chunk_duration_ms) + (1 if total_duration % chunk_duration_ms > 0 else 0)
         logging.info(f"Splitting {file_format} audio ({total_duration/1000:.2f} seconds) into {num_chunks} chunks")
         
-        # Create temporary directory to store chunks
-        temp_dir = tempfile.mkdtemp()
-        logging.info(f"Created temporary directory for chunks: {temp_dir}")
+        # Create temporary directory with secure permissions
+        temp_dir = tempfile.mkdtemp(prefix='audio_chunks_')
         
-        # Set secure permissions for the temporary directory (if on Unix-like OS)
+        # Set secure permissions immediately
         try:
             os.chmod(temp_dir, 0o700)  # Read/write/execute for owner only
         except Exception as perm_err:
             logging.warning(f"Could not set permissions on temp directory: {perm_err}")
+            # On Windows or if chmod fails, continue but log warning
+        
+        logging.info(f"Created secure temporary directory for chunks: {temp_dir}")
         
         # Split audio into chunks
         for i in range(num_chunks):
@@ -164,11 +176,14 @@ def chunk_audio_file(audio_data: bytes, file_format: str,
                 # Extract chunk
                 chunk = audio[start_time:end_time]
                 
-                # Create temporary file for chunk
-                chunk_path = os.path.join(temp_dir, f"chunk_{i}.{file_format}")
+                # Create temporary file for chunk with secure permissions
+                chunk_filename = f"chunk_{i}.{file_format}"
+                chunk_path = os.path.join(temp_dir, chunk_filename)
+                
+                # Export chunk
                 chunk.export(chunk_path, format=file_format)
                 
-                # Set secure permissions for the chunk file (if on Unix-like OS)
+                # Ensure secure permissions (may already be inherited from parent dir)
                 try:
                     os.chmod(chunk_path, 0o600)  # Read/write for owner only
                 except Exception as file_perm_err:

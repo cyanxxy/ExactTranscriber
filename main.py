@@ -14,7 +14,16 @@ from ui_components import (
 from transcription_processor import process_transcription_task
 from styles import apply_custom_styles
 from app_setup import setup_logging, setup_streamlit_page
-from state_manager import initialize_state
+from state_manager import (
+    initialize_state,
+    get_state,
+    set_state,
+    update_states,
+    get_metadata as sm_get_metadata, # Renamed to avoid conflict if main had get_metadata
+    update_processing_state,
+    is_file_being_processed,
+    is_file_complete
+)
 
 # Initialize logging
 setup_logging()
@@ -24,13 +33,14 @@ logger = logging.getLogger(__name__)
 def check_password() -> bool:
     """Returns `True` if the user had the correct password."""
     # Initialize password_correct in session state if it doesn't exist
-    if "password_correct" not in st.session_state:
-        st.session_state["password_correct"] = False
+    # This is handled by initialize_state() called in main()
+    # if "password_correct" not in st.session_state:
+    #    st.session_state["password_correct"] = False
 
     # Only show input if password is not correct
-    if not st.session_state["password_correct"]:
+    if not get_state("password_correct", False): # Default to False if not found
         # Center the login form with some styling
-        st.markdown("<h3 style='text-align: center; margin-bottom: 20px;'>Audio Transcription</h3>", 
+        st.markdown("<h3 style='text-align: center; margin-bottom: 20px;'>Audio Transcription</h3>",
                    unsafe_allow_html=True)
         
         # Create a centered container for the login form
@@ -47,7 +57,7 @@ def check_password() -> bool:
             if st.button("Login", type="primary"):
                 # Check password
                 if "app_password" in st.secrets and password == st.secrets["app_password"]:
-                    st.session_state["password_correct"] = True
+                    set_state("password_correct", True)
                     st.rerun()
                 else:
                     st.error("😕 Password incorrect")
@@ -61,39 +71,31 @@ def check_password() -> bool:
 
 def handle_transcription_processing(uploaded_file, client, model_name: str) -> None:
     """Handle the transcription processing workflow."""
-    # Get metadata from session state
-    metadata = {
-        "content_type": st.session_state.content_type_select.lower() 
-                        if st.session_state.content_type_select != "Other" else None,
-        "topic": st.session_state.topic_input if st.session_state.topic_input else None,
-        "description": st.session_state.description_input if st.session_state.description_input else None,
-        "language": st.session_state.language_select 
-                    if st.session_state.language_select != "Other" else None
-    }
-    metadata = {k: v for k, v in metadata.items() if v is not None}
-    
-    num_speakers = st.session_state.num_speakers_input
-    
+    # Get metadata from session state using state_manager's get_metadata
+    metadata = sm_get_metadata() # Use the specialized getter
+    num_speakers = get_state("num_speakers_input", 1)
+
     with st.spinner("Processing your audio file... This might take a while."):
         try:
             # Process transcription
             result = process_transcription_task(
                 client, model_name, uploaded_file, metadata, num_speakers
             )
-            
+
             if result["success"]:
-                # Update session state with results
-                st.session_state.transcript_text = result["transcript"]
-                st.session_state.edited_transcript = result["transcript"]
-                st.session_state.transcript_editor_content = result["transcript"]
-                st.session_state.processing_status = "complete"
-                
+                # Update session state with results using update_states or set_state
+                update_states({
+                    "transcript_text": result["transcript"],
+                    "edited_transcript": result["transcript"],
+                    "transcript_editor_content": result["transcript"],
+                    "processing_status": "complete"
+                })
                 logger.info(f"Transcription successful for file: {uploaded_file.name}")
                 st.rerun()
             else:
                 # Handle error
                 handle_transcription_error(result["error"], uploaded_file.name)
-                
+
         except Exception as e:
             # Handle unexpected error
             handle_transcription_error(str(e), uploaded_file.name, unexpected=True)
@@ -107,97 +109,101 @@ def handle_transcription_error(error_message: str, filename: str, unexpected: bo
     else:
         user_message = error_message
         logger.error(f"Transcription failed for {filename}: {error_message}")
-    
+
     st.error(f"Transcription failed: {user_message}")
-    st.session_state.processing_status = "error"
-    st.session_state.error_message = user_message
+    # Use update_processing_state for consistency
+    update_processing_state("error", user_message)
     st.rerun()
 
 
 def main():
     """Main application entry point."""
     logger.info("Application started/restarted.")
-    
+
     # Setup page configuration
     setup_streamlit_page()
     apply_custom_styles()
-    
+
     # Initialize session state
     initialize_state()
-    
-    logger.info(f"Initial state: processing_status={st.session_state.processing_status}, "
-               f"current_file_name={st.session_state.current_file_name}")
-    
+
+    logger.info(f"Initial state: processing_status={get_state('processing_status')}, "
+               f"current_file_name={get_state('current_file_name')}")
+
     # Check password
     if not check_password():
         st.stop()
-    
+
     # Application header
     st.markdown("<h1>Audio Transcription</h1>", unsafe_allow_html=True)
-    
+
     # Model selection
-    selected_model_id = render_model_selection()
+    selected_model_id = render_model_selection() # This function might internally use get/set_state
     st.divider()
-    
+
     # Initialize Gemini client
     client, error_message, model_name = initialize_gemini(selected_model_id)
     if not client:
         st.error(error_message)
-        st.session_state.processing_status = "error"
-        st.session_state.error_message = error_message
+        update_processing_state("error", error_message)
         logger.error(f"Failed to initialize Gemini client: {error_message}")
     else:
         st.success(f"Gemini initialized with model: {model_name}")
         logger.info(f"Gemini client initialized successfully with model: {model_name}")
-    
+
     # Context inputs
-    metadata, num_speakers = render_context_inputs()
-    # Store in session state for processing
-    st.session_state.content_type_select = metadata.get("content_type", "").title() or "Other"
-    st.session_state.language_select = metadata.get("language", "").title() or "Other"
-    st.session_state.topic_input = metadata.get("topic", "")
-    st.session_state.description_input = metadata.get("description", "")
-    st.session_state.num_speakers_input = num_speakers
-    
+    # render_context_inputs might use get/set_state internally for its widgets.
+    # The direct setting below is what we need to change.
+    metadata_from_ui, num_speakers_from_ui = render_context_inputs()
+    # Store in session state for processing using set_state or update_states
+    update_states({
+        "content_type_select": metadata_from_ui.get("content_type", "").title() or "Other",
+        "language_select": metadata_from_ui.get("language", "").title() or "Other",
+        "topic_input": metadata_from_ui.get("topic", ""),
+        "description_input": metadata_from_ui.get("description", ""),
+        "num_speakers_input": num_speakers_from_ui
+    })
+
     st.divider()
-    
+
     # File upload
-    uploaded_file, process_button = render_file_upload()
-    
+    uploaded_file, process_button = render_file_upload() # Might use get/set_state
+
     # Handle transcription trigger
+    # Use is_file_being_processed and is_file_complete for cleaner checks
     if uploaded_file and process_button and client and \
-       not (st.session_state.current_file_name == uploaded_file.name and 
-            st.session_state.processing_status in ["processing", "complete"]):
-        
-        # Update state
-        st.session_state.processing_status = "processing"
-        st.session_state.current_file_name = uploaded_file.name
-        st.session_state.transcript_text = None
-        st.session_state.edited_transcript = None
-        st.session_state.error_message = None
-        st.session_state.transcript_editor_content = ""
-        
+       not (is_file_being_processed(uploaded_file.name) or is_file_complete(uploaded_file.name)):
+
+        # Update state using update_states or individual set_state calls
+        update_states({
+            "processing_status": "processing",
+            "current_file_name": uploaded_file.name,
+            "transcript_text": None,
+            "edited_transcript": None,
+            "error_message": None,
+            "transcript_editor_content": ""
+        })
         logger.info(f"Transcription started for file: {uploaded_file.name}")
         st.rerun()
-    
+
     # Handle processing state
-    if st.session_state.processing_status == "processing" and uploaded_file and \
-       st.session_state.current_file_name == uploaded_file.name:
+    if get_state("processing_status") == "processing" and uploaded_file and \
+       get_state("current_file_name") == uploaded_file.name:
         handle_transcription_processing(uploaded_file, client, model_name)
-    
+
     # Display results
-    elif st.session_state.processing_status == "complete" and uploaded_file and \
-         st.session_state.current_file_name == uploaded_file.name and \
-         st.session_state.transcript_text is not None:
-        
+    elif get_state("processing_status") == "complete" and uploaded_file and \
+         get_state("current_file_name") == uploaded_file.name and \
+         get_state("transcript_text") is not None:
+
         st.success("Transcription finished!")
         logger.info(f"Displaying results for file: {uploaded_file.name}")
-        render_transcript_tabs(st.session_state.transcript_text, uploaded_file.name)
-    
+        render_transcript_tabs(get_state("transcript_text"), uploaded_file.name) # Pass state via get_state
+
     # Handle error state without file
-    elif st.session_state.processing_status == "error" and not uploaded_file:
-        st.error(f"An error occurred: {st.session_state.error_message}")
-        logger.error(f"Error occurred without file upload: {st.session_state.error_message}")
+    elif get_state("processing_status") == "error" and not uploaded_file:
+        st.error(f"An error occurred: {get_state('error_message')}")
+        logger.error(f"Error occurred without file upload: {get_state('error_message')}")
     
     # Footer
     render_footer()

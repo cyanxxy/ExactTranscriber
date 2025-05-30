@@ -46,26 +46,36 @@ def test_validate_audio_file_none():
     """Test with None as input."""
     assert validate_audio_file(None) is False
 
-@patch('file_utils.tempfile.NamedTemporaryFile')
-def test_create_temp_file_success(mock_named_temp_file):
-    mock_file = MagicMock()
-    mock_file.name = "temp_test_file.mp3"
-    mock_named_temp_file.return_value.__enter__.return_value = mock_file
+@patch('file_utils.os.chmod')
+@patch('file_utils.os.fdopen')
+@patch('file_utils.tempfile.mkstemp')
+def test_create_temp_file_success(mock_mkstemp, mock_fdopen, mock_chmod):
+    mock_fd = 123  # Mock file descriptor
+    mock_path = "mock_temp_file.mp3"
+    mock_mkstemp.return_value = (mock_fd, mock_path)
+
+    # This is what fdopen will return, capable of being used in a 'with' statement
+    mock_file_object = MagicMock() 
+    mock_fdopen.return_value.__enter__.return_value = mock_file_object
 
     audio_data = b"some audio data"
-    filename = "test_file.mp3"
-    
-    with patch('file_utils.os.chmod') as mock_chmod:
-        path, success = create_temp_file(audio_data, filename)
-        assert success is True
-        assert path == "temp_test_file.mp3"
-        mock_named_temp_file.assert_called_once_with(delete=False, suffix=filename, mode='wb')
-        mock_file.write.assert_called_once_with(audio_data)
-        mock_chmod.assert_called_once_with("temp_test_file.mp3", 0o600)
+    filename_suffix = "test_file.mp3" # This is the suffix passed to mkstemp
+
+    path, success = create_temp_file(audio_data, filename_suffix)
+
+    assert success is True
+    assert path == mock_path
+    mock_mkstemp.assert_called_once_with(suffix=filename_suffix)
+    # os.chmod is called first with the path
+    mock_chmod.assert_called_once_with(mock_path, 0o600)
+    # then os.fdopen is called with the file descriptor
+    mock_fdopen.assert_called_once_with(mock_fd, 'wb')
+    # finally, write is called on the file object returned by fdopen
+    mock_file_object.write.assert_called_once_with(audio_data)
 
 
-@patch('file_utils.tempfile.NamedTemporaryFile', side_effect=Exception("Failed to create temp file"))
-def test_create_temp_file_failure(mock_named_temp_file):
+@patch('file_utils.tempfile.mkstemp', side_effect=Exception("Failed to create temp file"))
+def test_create_temp_file_failure(mock_mkstemp):
     audio_data = b"some audio data"
     filename = "test_file.mp3"
     path, success = create_temp_file(audio_data, filename)

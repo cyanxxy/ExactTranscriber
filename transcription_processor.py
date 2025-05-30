@@ -20,6 +20,7 @@ from config import (
 from api_client import get_transcription_prompt
 from file_utils import chunk_audio_file, cleanup_chunks, cleanup_file
 from transcript_utils import adjust_chunk_timestamps, combine_transcriptions
+from utils import sanitize_error_message
 
 
 class TranscriptionProcessor:
@@ -67,10 +68,11 @@ class TranscriptionProcessor:
             # Upload file
             file_obj = self.client.files.upload(file=file_path, config={"mimeType": mime_type})
         except Exception as upload_err:
-            error_msg = self._sanitize_error(str(upload_err))
+            error_msg = sanitize_error_message(str(upload_err))
             self.logger.error(f"Failed to upload audio file: {error_msg}")
             
-            if "unauthorized" in error_msg.lower():
+            # Check for common error indicators in the sanitized message
+            if "unauthorized" in error_msg.lower() or "authentication error" in error_msg.lower() or "API key" in error_msg:
                 return None, "API authentication error. Please check your API key."
             elif "quota" in error_msg.lower():
                 return None, "API quota exceeded. Please try again later."
@@ -89,11 +91,11 @@ class TranscriptionProcessor:
             return response_text, None
             
         except Exception as transcribe_err:
-            error_msg = self._sanitize_error(str(transcribe_err))
+            error_msg = sanitize_error_message(str(transcribe_err))
             self.logger.error(f"Transcription API error: {error_msg}")
             return None, f"Transcription failed: {error_msg}"
     
-    def _process_large_file(self, file_path: str, file_format: str, 
+    def _process_large_file(self, file_path: str, file_format: str,
                            prompt: str) -> Tuple[Optional[str], Optional[str]]:
         """Process a large audio file by chunking."""
         # Read file data
@@ -151,14 +153,14 @@ class TranscriptionProcessor:
             try:
                 chunk_file = self.client.files.upload(file=chunk_path, config={"mimeType": mime_type})
             except Exception as upload_err:
-                error_msg = self._sanitize_error(str(upload_err))
+                error_msg = sanitize_error_message(str(upload_err))
                 self.logger.error(f"Failed to upload chunk {chunk_index+1}: {error_msg}")
                 
-                if "unauthorized" in error_msg.lower() or "authentication" in error_msg.lower():
-                    raise ValueError(f"API authentication error")
+                if "unauthorized" in error_msg.lower() or "authentication" in error_msg.lower() or "API key" in error_msg:
+                    raise ValueError(f"API authentication error") # Generic message, already sanitized
                 if "quota" in error_msg.lower():
-                    raise ValueError(f"API quota exceeded")
-                raise ValueError(f"Chunk upload failed")
+                    raise ValueError(f"API quota exceeded") # Generic message
+                raise ValueError(f"Chunk upload failed") # Generic message
             
             # Transcribe chunk
             try:
@@ -167,38 +169,30 @@ class TranscriptionProcessor:
                     contents=[prompt, chunk_file],
                 )
             except Exception as transcribe_err:
-                error_msg = self._sanitize_error(str(transcribe_err))
+                error_msg = sanitize_error_message(str(transcribe_err))
                 self.logger.error(f"Failed to transcribe chunk {chunk_index+1}: {error_msg}")
-                raise ValueError(f"Transcription API error")
+                raise ValueError(f"Transcription API error") # Generic message
             
             # Extract text
             try:
                 chunk_text = (chunk_response.text if hasattr(chunk_response, 'text') 
                             else chunk_response.candidates[0].content.parts[0].text)
             except Exception as extract_err:
-                self.logger.error(f"Failed to extract text from chunk {chunk_index+1} response: {extract_err}")
-                raise ValueError(f"Could not extract transcript text")
+                # This error is internal, not directly user-facing, but log it cleanly.
+                self.logger.error(f"Failed to extract text from chunk {chunk_index+1} response: {str(extract_err)}")
+                raise ValueError(f"Could not extract transcript text") # Generic message
             
             # Adjust timestamps
             adjusted_transcription = adjust_chunk_timestamps(chunk_text, chunk_index, CHUNK_DURATION_MS)
             self.logger.info(f"Successfully processed chunk {chunk_index+1}/{num_chunks}")
             return adjusted_transcription
             
-        except ValueError:
+        except ValueError: # Catch specific, somewhat generic errors raised above
             return None
-        except Exception as e:
-            self.logger.error(f"Unexpected error processing chunk {chunk_index+1}: {e}", exc_info=True)
+        except Exception as e: # Catch any other unexpected errors and sanitize them
+            self.logger.error(f"Unexpected error processing chunk {chunk_index+1}: {sanitize_error_message(str(e))}", exc_info=True)
             return None
-    
-    def _sanitize_error(self, error_message: str) -> str:
-        """Sanitize error messages to remove sensitive information."""
-        import re
-        # Remove potential API keys (long alphanumeric strings)
-        sanitized = re.sub(r'\b[A-Za-z0-9]{32,}\b', '[REDACTED]', error_message)
-        # Remove potential paths that might contain user info
-        sanitized = re.sub(r'/Users/[^/]+/', '/Users/[REDACTED]/', sanitized)
-        sanitized = re.sub(r'\\Users\\[^\\]+\\', '\\Users\\[REDACTED]\\', sanitized)
-        return sanitized
+# Removed _sanitize_error method by deleting its definition.
 
 
 def process_transcription_task(client: Any, model_name: str, uploaded_file,
@@ -234,7 +228,8 @@ def process_transcription_task(client: Any, model_name: str, uploaded_file,
         from file_utils import create_temp_file
         file_path, success = create_temp_file(audio_data, uploaded_file.name)
         if not success or not file_path:
-            raise Exception("Failed to create temporary file for audio processing")
+            # This is an internal error, but sanitize if it were to become user-facing
+            raise Exception(sanitize_error_message("Failed to create temporary file for audio processing"))
         
         # Process audio
         transcript_text, error_message = processor.process_audio(
@@ -242,13 +237,15 @@ def process_transcription_task(client: Any, model_name: str, uploaded_file,
         )
         
         if error_message:
+            # error_message from processor.process_audio should already be sanitized
             return {"success": False, "error": error_message}
         else:
             return {"success": True, "transcript": transcript_text}
             
     except Exception as e:
-        logging.error(f"Unexpected error in transcription task: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        error_str = str(e)
+        self.logger.error(f"Unexpected error in transcription task: {sanitize_error_message(error_str)}", exc_info=True)
+        return {"success": False, "error": sanitize_error_message(error_str)}
         
     finally:
         # Cleanup temporary file

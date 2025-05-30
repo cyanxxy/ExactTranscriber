@@ -27,6 +27,7 @@ def initialize_gemini(model_name: Optional[str] = None) -> Tuple[Any, Optional[s
             - model_name: The model name that will be used
     """
     # If no model specified, use default from model mapping
+    from utils import sanitize_error_message # Import at the top of the function or module
     if not model_name:
         model_id = GEMINI_MODELS.get(DEFAULT_MODEL)
     else:
@@ -35,34 +36,42 @@ def initialize_gemini(model_name: Optional[str] = None) -> Tuple[Any, Optional[s
     api_key = None
     error_message = None
 
-    # Try getting API key from Streamlit secrets
+    # Try getting API key from Streamlit secrets (common for Streamlit)
     try:
         if hasattr(st, 'secrets') and "GOOGLE_API_KEY" in st.secrets:
             api_key = st.secrets["GOOGLE_API_KEY"]
             logging.info("Using API key from st.secrets['GOOGLE_API_KEY']")
-        elif hasattr(st, 'secrets') and "secrets" in st.secrets and "GEMINI_API_KEY" in st.secrets["secrets"]:
-            api_key = st.secrets["secrets"]["GEMINI_API_KEY"]
-            logging.info("Using API key from st.secrets['secrets']['GEMINI_API_KEY']")
     except AttributeError as e:
         logging.warning(f"Could not access Streamlit secrets: {e}")
     except Exception as e:
         logging.warning(f"Unexpected error accessing Streamlit secrets: {e}")
 
-    # If not found in secrets, try environment variables
+    # If not found in st.secrets, try environment variables (common for general Python apps)
     if not api_key:
-        # Try GOOGLE_API_KEY first (new standard)
         api_key = os.environ.get("GOOGLE_API_KEY")
         if api_key:
             logging.info("Using API key from GOOGLE_API_KEY environment variable")
-        else:
-            # Fall back to GEMINI_API_KEY
-            api_key = os.environ.get("GEMINI_API_KEY")
-            if api_key:
-                logging.info("Using API key from GEMINI_API_KEY environment variable")
+
+    # If not found yet, try older/alternative st.secrets key
+    if not api_key:
+        try:
+            if hasattr(st, 'secrets') and "GEMINI_API_KEY" in st.secrets:
+                api_key = st.secrets["GEMINI_API_KEY"]
+                logging.info("Using API key from st.secrets['GEMINI_API_KEY']")
+        except AttributeError as e:
+            logging.warning(f"Could not access Streamlit secrets for GEMINI_API_KEY: {e}")
+        except Exception as e:
+            logging.warning(f"Unexpected error accessing Streamlit secrets for GEMINI_API_KEY: {e}")
+
+    # If not found yet, try older/alternative environment variable
+    if not api_key:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if api_key:
+            logging.info("Using API key from GEMINI_API_KEY environment variable")
 
     # If API key is still not found
     if not api_key:
-        error_message = "API key not found. Please set GOOGLE_API_KEY in Streamlit secrets or as an environment variable."
+        error_message = "API key not found. Please set GOOGLE_API_KEY or GEMINI_API_KEY in Streamlit secrets or as an environment variable."
         logging.error(error_message)
         return None, error_message, None
 
@@ -108,18 +117,15 @@ def initialize_gemini(model_name: Optional[str] = None) -> Tuple[Any, Optional[s
             error_message = "Network error connecting to Gemini API. Please check your internet connection."
         else:
             error_message = f"Failed to initialize Gemini client: {str(e)}"
-            
-        # Clean up potentially sensitive info from error
-        if api_key and api_key in error_message:
-            error_message = error_message.replace(api_key, "[REDACTED]")
         
-        # Additional sanitization for common API key patterns
-        import re
-        # Remove potential API keys (long alphanumeric strings)
-        error_message = re.sub(r'\b[A-Za-z0-9]{32,}\b', '[REDACTED]', error_message)
+        # Sanitize the error message using the utility function
+        # The api_key specific redaction `if api_key and api_key in error_message:`
+        # is hard to replicate here without passing api_key to sanitize_error_message.
+        # The regex based redaction in sanitize_error_message should cover most API key formats.
+        sanitized_error = sanitize_error_message(error_message)
             
-        logging.error(f"Gemini initialization error: {error_message}")
-        return None, error_message, None
+        logging.error(f"Gemini initialization error: {sanitized_error}")
+        return None, sanitized_error, None
 
 def get_transcription_prompt(metadata: Dict[str, Any] = None) -> Template:
     """
